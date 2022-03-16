@@ -1,7 +1,7 @@
 From cba2abea2066280d911df90752a8fa8aa42e79ef Mon Sep 17 00:00:00 2001
 From: nxf36764 <kumarnarayan.bhat@nxp.com>
 Date: Thu, 28 Oct 2021 13:09:10 +0530
-Subject: [PATCH 1/3] [artf905105][T4TEE]T4T Ndef emulation integration
+Subject: [PATCH 1/5] [artf905105][T4TEE]T4T Ndef emulation integration
 
 Ported T4T ndef emulation from android 11 7160 nfc stack to android 12 7160 nfc stack
 ---
@@ -54,128 +54,6 @@ Ported T4T ndef emulation from android 11 7160 nfc stack to android 12 7160 nfc 
  create mode 100644 src/nfa/t4tnfcee/nfa_nfcee_api.cc
  create mode 100644 src/nfa/t4tnfcee/nfa_nfcee_main.cc
 
-diff --git a/conf/Android.bp b/conf/Android.bp
-deleted file mode 100644
-index 1f62fe0..0000000
---- a/conf/Android.bp
-+++ /dev/null
-@@ -1,28 +0,0 @@
--// Copyright (C) 2020 The Android Open Source Project
--//
--// Licensed under the Apache License, Version 2.0 (the "License");
--// you may not use this file except in compliance with the License.
--// You may obtain a copy of the License at
--//
--//      http://www.apache.org/licenses/LICENSE-2.0
--//
--// Unless required by applicable law or agreed to in writing, software
--// distributed under the License is distributed on an "AS IS" BASIS,
--// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
--// See the License for the specific language governing permissions and
--// limitations under the License.
--
--package {
--    // See: http://go/android-license-faq
--    // A large-scale-change added 'default_applicable_licenses' to import
--    // all of the 'license_kinds' from "system_nfc_license"
--    // to get the below license kinds:
--    //   SPDX-license-identifier-Apache-2.0
--    default_applicable_licenses: ["system_nfc_license"],
--}
--
--prebuilt_etc {
--    name: "libnfc-nci.conf-default",
--    src: "libnfc-nci.conf",
--    filename: "libnfc-nci.conf",
--}
-diff --git a/conf/libnfc-nci.conf b/conf/libnfc-nci.conf
-deleted file mode 100644
-index f07f0ed..0000000
---- a/conf/libnfc-nci.conf
-+++ /dev/null
-@@ -1,82 +0,0 @@
--###############################################################################
--# Debug options
--NFC_DEBUG_ENABLED=0
--
--###############################################################################
--# File used for NFA storage
--NFA_STORAGE="/data/nfc"
--PRESERVE_STORAGE=0x01
--
--###############################################################################
--# When screen is turned off, specify the desired power state of the controller.
--# 0: power-off-sleep state; DEFAULT
--# 1: full-power state
--# 2: screen-off card-emulation (CE4/CE3/CE1 modes are used)
--SCREEN_OFF_POWER_STATE=1
--
--###############################################################################
--# Default poll duration (in ms)
--# Default is 500ms if not set (see nfc_target.h)
--#NFA_DM_DISC_DURATION_POLL=333
--
--###############################################################################
--# Force tag polling for the following technology(s).
--# The bits are defined as tNFA_TECHNOLOGY_MASK in nfa_api.h.
--# Default is NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B |
--#            NFA_TECHNOLOGY_MASK_F | NFA_TECHNOLOGY_MASK_ISO15693 |
--#            NFA_TECHNOLOGY_MASK_B_PRIME | NFA_TECHNOLOGY_MASK_KOVIO |
--#            NFA_TECHNOLOGY_MASK_A_ACTIVE | NFA_TECHNOLOGY_MASK_F_ACTIVE.
--#
--# Notable bits:
--# NFA_TECHNOLOGY_MASK_A             0x01    /* NFC Technology A             */
--# NFA_TECHNOLOGY_MASK_B             0x02    /* NFC Technology B             */
--# NFA_TECHNOLOGY_MASK_F             0x04    /* NFC Technology F             */
--# NFA_TECHNOLOGY_MASK_ISO15693      0x08    /* Proprietary Technology       */
--# NFA_TECHNOLOGY_MASK_KOVIO         0x20    /* Proprietary Technology       */
--# NFA_TECHNOLOGY_MASK_A_ACTIVE      0x40    /* NFC Technology A active mode */
--# NFA_TECHNOLOGY_MASK_F_ACTIVE      0x80    /* NFC Technology F active mode */
--POLLING_TECH_MASK=0x2F
--
--###############################################################################
--# Force P2P to only listen for the following technology(s).
--# The bits are defined as tNFA_TECHNOLOGY_MASK in nfa_api.h.
--# Default is NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_F |
--#            NFA_TECHNOLOGY_MASK_A_ACTIVE | NFA_TECHNOLOGY_MASK_F_ACTIVE
--#
--# Notable bits:
--# NFA_TECHNOLOGY_MASK_A             0x01    /* NFC Technology A             */
--# NFA_TECHNOLOGY_MASK_F             0x04    /* NFC Technology F             */
--# NFA_TECHNOLOGY_MASK_A_ACTIVE      0x40    /* NFC Technology A active mode */
--# NFA_TECHNOLOGY_MASK_F_ACTIVE      0x80    /* NFC Technology F active mode */
--P2P_LISTEN_TECH_MASK=0x00
--
--###############################################################################
--# Force UICC to only listen to the following technology(s).
--# The bits are defined as tNFA_TECHNOLOGY_MASK in nfa_api.h.
--# Default is NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B | NFA_TECHNOLOGY_MASK_F
--UICC_LISTEN_TECH_MASK=0x07
--
--###############################################################################
--# Override the stack default for NFA_EE_MAX_EE_SUPPORTED set in nfc_target.h.
--# The value is set to 3 by default as it assumes we will discover 0xF2,
--# 0xF3, and 0xF4. If a platform will exclude and SE, this value can be reduced
--# so that the stack will not wait any longer than necessary.
--# Maximum EE supported number
--# NXP PN547C2 0x02
--# NXP PN65T 0x03
--# NXP PN548C2 0x02
--# NXP PN66T 0x03
--NFA_MAX_EE_SUPPORTED=0x02
--
--###############################################################################
--# AID for Empty Select command
--# If specified, this AID will be substituted when an Empty SELECT command is
--# detected.  The first byte is the length of the AID.  Maximum length is 16.
--AID_FOR_EMPTY_SELECT={08:A0:00:00:01:51:00:00:00}
--
--###############################################################################
--# AID_MATCHING constants
--# AID_MATCHING_EXACT_ONLY 0x00
--# AID_MATCHING_EXACT_OR_PREFIX 0x01
--# AID_MATCHING_PREFIX_ONLY 0x02
--AID_MATCHING_MODE=0x01
 diff --git a/src/Android.bp b/src/Android.bp
 index f691c4a29..f03f84af6 100644
 --- a/src/Android.bp
@@ -3764,13 +3642,13 @@ index 54ede5d86..6c35f50cd 100644
  **
  ** Function         RW_T4tFormatNDef
 -- 
-2.34.1
+2.35.1
 
 
 From 0e6bc906cf8933c3e35214e9f8390736b1bc644d Mon Sep 17 00:00:00 2001
 From: nxf36764 <kumarnarayan.bhat@nxp.com>
 Date: Wed, 1 Dec 2021 11:34:03 +0530
-Subject: [PATCH 2/3] [artf914584][artf828732][P2P]: P2P - URL/Contact/image
+Subject: [PATCH 2/5] [artf914584][artf828732][P2P]: P2P - URL/Contact/image
  transfer is not happening
 
 In case of dynamic memory allocation, MW shall make sure that the pool
@@ -3820,13 +3698,15 @@ index 1aeb3ae1e..f953b0410 100644
  
    return (gki_cb.com.freeq[pool_id].total);
 -- 
-2.34.1
+2.35.1
 
 
-From a8b048fce94f4c20f5e27efff9d0fb2e039a0216 Mon Sep 17 00:00:00 2001
+From a34c7ec1423c4cf778119766c30d23032bfdf3fb Mon Sep 17 00:00:00 2001
 From: nxf36764 <kumarnarayan.bhat@nxp.com>
-Date: Tue, 11 Jan 2022 11:56:06 +0530
-Subject: [PATCH 3/3] rw_t4t changes for t4t emulation
+Date: Thu, 24 Feb 2022 12:13:46 +0530
+Subject: [PATCH 3/5] [artf929996][T4T NDEF EMULATION]:T4T NDEF emulation
+ failure in early integration code drop Solution: In API RW_T4tNfceeUpdateNlen
+ t4t cc byte nlen size is assigned.
 
 ---
  src/nfc/tags/rw_t4t.cc | 4 ++++
@@ -3848,5 +3728,1194 @@ index 6c35f50cd..ea0075b20 100644
      return NFC_STATUS_FAILED;
    }
 -- 
-2.34.1
+2.35.1
+
+
+From 2a65bab80e9d72cc2a736b0deefd4edb04a13fd8 Mon Sep 17 00:00:00 2001
+From: nxf36764 <kumarnarayan.bhat@nxp.com>
+Date: Thu, 24 Feb 2022 15:12:51 +0530
+Subject: [PATCH 4/5] [artf936463][China ID]: Added support for ChinaID and
+ China Transit cards.
+
+1.To support Type3 B tag discovery.
+2.To notify events to upper layer while reading the tag.
+3.To Get ID parameters of the tag from lower layers and notify to upper layers
+---
+ src/include/nci_defs.h        |  27 ++++++
+ src/nfa/dm/nfa_dm_act.cc      |  56 +++++++++++-
+ src/nfa/dm/nfa_dm_discover.cc |  29 +++++-
+ src/nfa/dm/nfa_dm_main.cc     |  25 +++++-
+ src/nfa/include/nfa_api.h     |  22 +++++
+ src/nfa/include/nfa_dm_int.h  |  20 +++++
+ src/nfa/include/nfa_rw_int.h  |  26 ++++++
+ src/nfa/rw/nfa_rw_act.cc      | 110 +++++++++++++++++++++--
+ src/nfc/include/nfc_api.h     |  29 ++++++
+ src/nfc/include/rw_api.h      |  29 ++++++
+ src/nfc/include/rw_int.h      |  20 +++++
+ src/nfc/nfc/nfc_ncif.cc       |  25 +++++-
+ src/nfc/tags/rw_main.cc       |  25 +++++-
+ src/nfc/tags/rw_t4t.cc        | 161 +++++++++++++++++++++++++++++++++-
+ 14 files changed, 591 insertions(+), 13 deletions(-)
+
+diff --git a/src/include/nci_defs.h b/src/include/nci_defs.h
+index 442b2c26b..c7089ef2d 100644
+--- a/src/include/nci_defs.h
++++ b/src/include/nci_defs.h
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This file contains the definition from NCI specification
+@@ -358,6 +377,14 @@ typedef uint8_t tNCI_INTF_TYPE;
+ #define NCI_PROTOCOL_T5T 0x06
+ #define NCI_PROTOCOL_ISO_DEP 0x04
+ #define NCI_PROTOCOL_NFC_DEP 0x05
++/**********************************************
++ * Proprietary Protocols
++ **********************************************/
++#if (NXP_EXTNS == TRUE)
++#ifndef NCI_PROTOCOL_T3BT
++#define NCI_PROTOCOL_T3BT 0x8b
++#endif
++#endif
+ 
+ /* Discovery Types/Detected Technology and Mode */
+ #define NCI_DISCOVERY_TYPE_POLL_A 0x00
+diff --git a/src/nfa/dm/nfa_dm_act.cc b/src/nfa/dm/nfa_dm_act.cc
+index cd9d5cde1..3e365e113 100644
+--- a/src/nfa/dm/nfa_dm_act.cc
++++ b/src/nfa/dm/nfa_dm_act.cc
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This file contains the action functions for device manager state
+@@ -785,7 +804,11 @@ bool nfa_dm_act_deactivate(tNFA_DM_MSG* p_data) {
+         deact_type = NFA_DEACTIVATE_TYPE_SLEEP;
+       }
+     }
+-    if (nfa_dm_cb.disc_cb.disc_state == NFA_DM_RFST_W4_ALL_DISCOVERIES) {
++    if ((nfa_dm_cb.disc_cb.disc_state == NFA_DM_RFST_W4_ALL_DISCOVERIES)
++#if (NXP_EXTNS == TRUE)
++        || (nfa_dm_cb.disc_cb.activated_protocol == NFA_PROTOCOL_T3BT)
++#endif
++        ){
+       /* Only deactivate to IDLE is allowed in this state. */
+       deact_type = NFA_DEACTIVATE_TYPE_IDLE;
+     }
+@@ -943,6 +966,9 @@ tNFA_STATUS nfa_dm_start_polling(void) {
+     }
+     if (poll_tech_mask & NFA_TECHNOLOGY_MASK_B) {
+       poll_disc_mask |= NFA_DM_DISC_MASK_PB_ISO_DEP;
++#if (NXP_EXTNS == TRUE)
++      poll_disc_mask |= NFA_DM_DISC_MASK_PB_T3BT;
++#endif
+     }
+     if (poll_tech_mask & NFA_TECHNOLOGY_MASK_F) {
+       poll_disc_mask |= NFA_DM_DISC_MASK_PF_T3T;
+@@ -1527,7 +1553,12 @@ static void nfa_dm_excl_disc_cback(tNFA_DM_RF_DISC_EVT event,
+               (nfa_dm_cb.disc_cb.activated_protocol == NFC_PROTOCOL_ISO_DEP) ||
+               (nfa_dm_cb.disc_cb.activated_protocol == NFA_PROTOCOL_T5T) ||
+               (nfa_dm_cb.disc_cb.activated_protocol == NFC_PROTOCOL_KOVIO) ||
+-              (nfa_dm_cb.disc_cb.activated_protocol == NFC_PROTOCOL_MIFARE)) {
++              (nfa_dm_cb.disc_cb.activated_protocol == NFC_PROTOCOL_MIFARE)
++#if (NXP_EXTNS == TRUE)
++                   ||
++                   (nfa_dm_cb.disc_cb.activated_protocol == NFC_PROTOCOL_T3BT)
++#endif
++              ) {
+             /* Notify NFA tag sub-system */
+             nfa_rw_proc_disc_evt(NFA_DM_RF_DISC_ACTIVATED_EVT, p_data, false);
+           } else /* if NFC-DEP, ISO-DEP with frame interface or others */
+@@ -1773,8 +1804,14 @@ void nfa_dm_notify_activation_status(tNFA_STATUS status,
+         p_nfcid = p_params->t1t.uid;
+         evt_data.activated.activate_ntf.rf_tech_param.param.pa.nfcid1_len =
+             nfcid_len;
++#if (NXP_EXTNS == TRUE)
++        if (nfcid_len > 0 && p_nfcid != nullptr) {
++#endif
+         memcpy(evt_data.activated.activate_ntf.rf_tech_param.param.pa.nfcid1,
+                p_nfcid, nfcid_len);
++#if (NXP_EXTNS == TRUE)
++        }
++#endif
+       } else {
+         nfcid_len = p_tech_params->param.pa.nfcid1_len;
+         p_nfcid = p_tech_params->param.pa.nfcid1;
+@@ -1782,6 +1819,21 @@ void nfa_dm_notify_activation_status(tNFA_STATUS status,
+     } else if (p_tech_params->mode == NFC_DISCOVERY_TYPE_POLL_B) {
+       nfcid_len = NFC_NFCID0_MAX_LEN;
+       p_nfcid = p_tech_params->param.pb.nfcid0;
++#if (NXP_EXTNS == TRUE)
++      if (nfa_dm_cb.disc_cb.activated_protocol == NFC_PROTOCOL_T3BT) {
++        if (p_tech_params->param.pb.pupiid_len != 0) {
++          tNFC_ACTIVATE_DEVT* activate_ntf =
++              (tNFC_ACTIVATE_DEVT*)nfa_dm_cb.p_activate_ntf;
++          p_nfcid = activate_ntf->rf_tech_param.param.pb.pupiid;
++          nfcid_len = activate_ntf->rf_tech_param.param.pb.pupiid_len;
++           DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
++              "nfa_dm_notify_activation_status (): update pupi_len=%x",
++              nfcid_len);
++          memcpy(evt_data.activated.activate_ntf.rf_tech_param.param.pb.pupiid,
++                 p_nfcid, nfcid_len);
++        }
++      }
++#endif
+     } else if (p_tech_params->mode == NFC_DISCOVERY_TYPE_POLL_F) {
+       nfcid_len = NFC_NFCID2_LEN;
+       p_nfcid = p_tech_params->param.pf.nfcid2;
+diff --git a/src/nfa/dm/nfa_dm_discover.cc b/src/nfa/dm/nfa_dm_discover.cc
+index 2eeb8427a..16811d3e2 100644
+--- a/src/nfa/dm/nfa_dm_discover.cc
++++ b/src/nfa/dm/nfa_dm_discover.cc
+@@ -15,6 +15,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This file contains the action functions for device manager discovery
+@@ -114,7 +133,11 @@ static uint8_t nfa_dm_get_rf_discover_config(
+   }
+ 
+   /* Check polling B */
+-  if (dm_disc_mask & NFA_DM_DISC_MASK_PB_ISO_DEP) {
++  if (dm_disc_mask & (NFA_DM_DISC_MASK_PB_ISO_DEP
++#if (NXP_EXTNS == TRUE)
++                      | NFA_DM_DISC_MASK_PB_T3BT
++#endif
++    )) {
+     disc_params[num_params].type = NFC_DISCOVERY_TYPE_POLL_B;
+     disc_params[num_params].frequency = p_nfa_dm_rf_disc_freq_cfg->pb;
+     num_params++;
+@@ -615,6 +638,10 @@ static tNFA_DM_DISC_TECH_PROTO_MASK nfa_dm_disc_get_disc_mask(
+   } else if (NFC_DISCOVERY_TYPE_POLL_B == tech_n_mode) {
+     if (protocol == NFC_PROTOCOL_ISO_DEP)
+       disc_mask = NFA_DM_DISC_MASK_PB_ISO_DEP;
++#if (NXP_EXTNS == TRUE)
++    else if (protocol == NFC_PROTOCOL_T3BT)
++      disc_mask = NFA_DM_DISC_MASK_PB_T3BT;
++#endif
+   } else if (NFC_DISCOVERY_TYPE_POLL_F == tech_n_mode) {
+     if (protocol == NFC_PROTOCOL_T3T)
+       disc_mask = NFA_DM_DISC_MASK_PF_T3T;
+diff --git a/src/nfa/dm/nfa_dm_main.cc b/src/nfa/dm/nfa_dm_main.cc
+index be25a8747..2a9b5e7b5 100644
+--- a/src/nfa/dm/nfa_dm_main.cc
++++ b/src/nfa/dm/nfa_dm_main.cc
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This is the main implementation file for the NFA device manager.
+@@ -177,7 +196,11 @@ bool nfa_dm_is_protocol_supported(tNFC_PROTOCOL protocol, uint8_t sel_res) {
+           (protocol == NFC_PROTOCOL_T3T) ||
+           (protocol == NFC_PROTOCOL_ISO_DEP) ||
+           (protocol == NFC_PROTOCOL_NFC_DEP) ||
+-          (protocol == NFC_PROTOCOL_T5T) || (protocol == NFC_PROTOCOL_MIFARE));
++          (protocol == NFC_PROTOCOL_T5T) || (protocol == NFC_PROTOCOL_MIFARE)
++#if (NXP_EXTNS == TRUE)
++          || (protocol == NFC_PROTOCOL_T3BT)
++#endif
++          );
+ }
+ /*******************************************************************************
+ **
+diff --git a/src/nfa/include/nfa_api.h b/src/nfa/include/nfa_api.h
+index d03b1615c..72cb41fc7 100755
+--- a/src/nfa/include/nfa_api.h
++++ b/src/nfa/include/nfa_api.h
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This is the public interface file for NFA, Broadcom's NFC application
+@@ -135,6 +154,9 @@ typedef uint8_t tNFA_TECHNOLOGY_MASK;
+ #define NFA_PROTOCOL_NFC_DEP NFC_PROTOCOL_NFC_DEP
+ /* NFC_PROTOCOL_T5T in NCI2.0 and NFC_PROTOCOL_ISO15693 proprietary in NCI1.0*/
+ #define NFA_PROTOCOL_T5T NFC_PROTOCOL_T5T
++#if (NXP_EXTNS == TRUE)
++#define NFA_PROTOCOL_T3BT NFC_PROTOCOL_T3BT
++#endif
+ #define NFA_PROTOCOL_INVALID 0xFF
+ typedef uint8_t tNFA_NFC_PROTOCOL;
+ 
+diff --git a/src/nfa/include/nfa_dm_int.h b/src/nfa/include/nfa_dm_int.h
+index ec756127e..8a875bdc8 100755
+--- a/src/nfa/include/nfa_dm_int.h
++++ b/src/nfa/include/nfa_dm_int.h
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This is the private interface file for the NFA device manager.
+@@ -294,6 +313,7 @@ typedef uint8_t tNFA_DM_RF_DISC_EVT;
+ /* Legacy/proprietary/non-NFC Forum protocol (e.g Shanghai transit card) */
+ #define NFA_DM_DISC_MASK_P_LEGACY 0x00002000
+ #define NFA_DM_DISC_MASK_PA_MIFARE 0x00004000
++#define NFA_DM_DISC_MASK_PB_T3BT 0x00008000
+ #define NFA_DM_DISC_MASK_POLL 0x0000FFFF
+ 
+ #define NFA_DM_DISC_MASK_LA_T1T 0x00010000
+diff --git a/src/nfa/include/nfa_rw_int.h b/src/nfa/include/nfa_rw_int.h
+index 38101d7b8..6988b71c7 100644
+--- a/src/nfa/include/nfa_rw_int.h
++++ b/src/nfa/include/nfa_rw_int.h
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This is the private interface file for NFA_RW
+@@ -119,6 +138,9 @@ enum {
+   NFA_RW_OP_I93_GET_SYS_INFO,
+   NFA_RW_OP_I93_GET_MULTI_BLOCK_STATUS,
+   NFA_RW_OP_I93_SET_ADDR_MODE,
++#if (NXP_EXTNS == TRUE)
++  NFA_RW_OP_T3BT_PUPI,
++#endif
+   NFA_RW_OP_MAX
+ };
+ typedef uint8_t tNFA_RW_OP;
+@@ -347,4 +369,8 @@ extern bool nfa_rw_handle_event(NFC_HDR* p_msg);
+ extern void nfa_rw_free_ndef_rx_buf(void);
+ extern void nfa_rw_sys_disable(void);
+ 
++#if (NXP_EXTNS == TRUE)
++extern void nfa_rw_update_pupi_id(uint8_t* p, uint8_t len);
++#endif
++
+ #endif /* NFA_DM_INT_H */
+diff --git a/src/nfa/rw/nfa_rw_act.cc b/src/nfa/rw/nfa_rw_act.cc
+index 0102a6bcc..e9c42053e 100644
+--- a/src/nfa/rw/nfa_rw_act.cc
++++ b/src/nfa/rw/nfa_rw_act.cc
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This file contains the action functions the NFA_RW state machine.
+@@ -1017,7 +1036,12 @@ static void nfa_rw_handle_t4t_evt(tRW_EVENT event, tRW_DATA* p_rw_data) {
+ 
+       nfa_dm_act_conn_cback_notify(NFA_FORMAT_CPLT_EVT, &conn_evt_data);
+       break;
+-
++#if (NXP_EXTNS == TRUE)
++    case RW_T3BT_RAW_READ_CPLT_EVT:
++      nfa_rw_command_complete();
++      nfa_dm_act_conn_cback_notify(NFA_ACTIVATED_EVT, &conn_evt_data);
++      break;
++#endif
+     case RW_T4T_NDEF_READ_EVT: /* Segment of data received from type 4 tag */
+       if (nfa_rw_cb.cur_op == NFA_RW_OP_READ_NDEF) {
+         nfa_rw_store_ndef_rx_buf(p_rw_data);
+@@ -1400,6 +1424,24 @@ static void nfa_rw_handle_i93_evt(tRW_EVENT event, tRW_DATA* p_rw_data) {
+       break;
+   }
+ }
++#if (NXP_EXTNS == TRUE)
++static void nfa_rw_handle_t3bt_evt(tRW_EVENT event, __attribute__((unused)) tRW_DATA* p_rw_data) {
++
++  // tNFC_ACTIVATE_DEVT *activate_ntf =
++  // (tNFC_ACTIVATE_DEVT*)nfa_dm_cb.p_activate_ntf;
++  DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("nfa_rw_handle_t3bt_evt:");
++
++  switch (event) {
++    case RW_T3BT_RAW_READ_CPLT_EVT:
++      nfa_rw_command_complete();
++      break;
++    default:
++      DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("nfa_rw_handle_t3bt_evt: default event");
++      break;
++  }
++  nfa_dm_notify_activation_status(NFA_STATUS_OK, nullptr);
++}
++#endif
+ 
+ /*******************************************************************************
+ **
+@@ -1521,7 +1563,14 @@ static void nfa_rw_cback(tRW_EVENT event, tRW_DATA* p_rw_data) {
+   } else if (event < RW_I93_MAX_EVT) {
+     /* Handle ISO 15693 tag events */
+     nfa_rw_handle_i93_evt(event, p_rw_data);
+-  } else if (event < RW_MFC_MAX_EVT) {
++  } 
++#if (NXP_EXTNS == TRUE)
++  else if (event < RW_T3BT_MAX_EVT) {
++    /* Handle ISO 14443-3B tag events */
++    nfa_rw_handle_t3bt_evt(event, p_rw_data);
++  }
++#endif
++  else if (event < RW_MFC_MAX_EVT) {
+     /* Handle Mifare Classic tag events */
+     nfa_rw_handle_mfc_evt(event, p_rw_data);
+   } else {
+@@ -2345,6 +2394,20 @@ static bool nfa_rw_t3t_get_system_codes() {
+   return true;
+ }
+ 
++#if (NXP_EXTNS == TRUE)
++static bool nfa_rw_t3bt_get_pupi(__attribute__((unused)) tNFA_RW_MSG* p_data) {
++  tNFC_STATUS status;
++
++  status = RW_T3BtGetPupiID();
++
++  if (status != NFC_STATUS_OK) {
++    nfa_rw_command_complete();
++  }
++
++  return true;
++}
++#endif
++
+ /*******************************************************************************
+ **
+ ** Function         nfa_rw_i93_command
+@@ -2589,7 +2652,11 @@ bool nfa_rw_activate_ntf(tNFA_RW_MSG* p_data) {
+     if ((p_activate_params->protocol != NFA_PROTOCOL_T1T) &&
+         (p_activate_params->protocol != NFA_PROTOCOL_T2T) &&
+         (p_activate_params->protocol != NFA_PROTOCOL_T3T) &&
+-        (p_activate_params->protocol != NFA_PROTOCOL_T5T)) {
++        (p_activate_params->protocol != NFA_PROTOCOL_T5T)
++#if (NXP_EXTNS == TRUE)
++        && (p_activate_params->protocol != NFA_PROTOCOL_T3BT)
++#endif
++        ) {
+       nfa_rw_cb.protocol = NFA_PROTOCOL_INVALID;
+     }
+   } else if (p_activate_params->intf_param.type == NCI_INTERFACE_ISO_DEP) {
+@@ -2671,7 +2738,21 @@ bool nfa_rw_activate_ntf(tNFA_RW_MSG* p_data) {
+     bool free_buf = nfa_rw_handle_op_req(&msg);
+     CHECK(free_buf)
+         << "nfa_rw_handle_op_req is holding on to soon-garbage stack memory.";
+-  } else if (NFA_PROTOCOL_T5T == nfa_rw_cb.protocol) {
++  } 
++#if (NXP_EXTNS == TRUE)
++  else if (NFC_PROTOCOL_T3BT == nfa_rw_cb.protocol) {
++
++    activate_notify =
++        false; /* Delay notifying upper layer of NFA_ACTIVATED_EVT until system
++                  codes are retrieved */
++    tNFA_RW_MSG msg;
++    msg.op_req.op = NFA_RW_OP_T3BT_PUPI;
++    bool free_buf = nfa_rw_handle_op_req(&msg);
++    CHECK(free_buf)
++        << "nfa_rw_handle_op_req is holding on to soon-garbage stack memory.";
++  }
++#endif
++  else if (NFA_PROTOCOL_T5T == nfa_rw_cb.protocol) {
+     /* Delay notifying upper layer of NFA_ACTIVATED_EVT to retrieve additional
+      * tag infomation */
+     nfa_rw_cb.flags |= NFA_RW_FL_ACTIVATION_NTF_PENDING;
+@@ -2984,7 +3065,11 @@ bool nfa_rw_handle_op_req(tNFA_RW_MSG* p_data) {
+     case NFA_RW_OP_I93_SET_ADDR_MODE:
+       nfa_rw_i93_command(p_data);
+       break;
+-
++#if (NXP_EXTNS == TRUE)
++    case NFA_RW_OP_T3BT_PUPI:
++      nfa_rw_t3bt_get_pupi(p_data);
++      break;
++#endif
+     default:
+       LOG(ERROR) << StringPrintf("nfa_rw_handle_api: unhandled operation: %i",
+                                  p_data->op_req.op);
+@@ -3176,3 +3261,18 @@ void nfa_rw_command_complete(void) {
+   /* Restart presence_check timer */
+   nfa_rw_check_start_presence_check_timer(NFA_RW_PRESENCE_CHECK_INTERVAL);
+ }
++
++#if (NXP_EXTNS == TRUE)
++void nfa_rw_update_pupi_id(uint8_t* p, uint8_t len) {
++  tNFC_ACTIVATE_DEVT* activate_ntf =
++      (tNFC_ACTIVATE_DEVT*)nfa_dm_cb.p_activate_ntf;
++
++  DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("nfa_rw_update_pupi_id:");
++  if (len != 0) {
++    activate_ntf->rf_tech_param.param.pb.pupiid_len = len;
++    memcpy(activate_ntf->rf_tech_param.param.pb.pupiid, p, len);
++  } else {
++    DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("nfa_rw_update_pupi_id: invalid resp_len=%d", len);
++  }
++}
++#endif
+diff --git a/src/nfc/include/nfc_api.h b/src/nfc/include/nfc_api.h
+index dc2540fa1..f19b55d90 100644
+--- a/src/nfc/include/nfc_api.h
++++ b/src/nfc/include/nfc_api.h
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This file contains the Near Field Communication (NFC) API function
+@@ -393,6 +412,9 @@ extern uint8_t NFC_GetNCIVersion();
+ /* NFCDEP/LLCP - NFC-A or NFC-F       */
+ #define NFC_PROTOCOL_NFC_DEP NCI_PROTOCOL_NFC_DEP
+ #define NFC_PROTOCOL_MIFARE NCI_PROTOCOL_MIFARE
++#if (NXP_EXTNS == TRUE)
++#define NFC_PROTOCOL_T3BT NCI_PROTOCOL_T3BT
++#endif
+ #define NFC_PROTOCOL_ISO15693 NCI_PROTOCOL_15693
+ #define NFC_PROTOCOL_B_PRIME NCI_PROTOCOL_B_PRIME
+ #define NFC_PROTOCOL_KOVIO NCI_PROTOCOL_KOVIO
+@@ -574,11 +596,18 @@ typedef tNFC_STATUS tNFC_START_DEVT;
+ typedef tNCI_RF_PA_PARAMS tNFC_RF_PA_PARAMS;
+ #define NFC_MAX_SENSB_RES_LEN NCI_MAX_SENSB_RES_LEN
+ #define NFC_NFCID0_MAX_LEN 4
++#if (NXP_EXTNS == TRUE)
++#define NFC_PUPIID_MAX_LEN 8
++#endif
+ typedef struct {
+   uint8_t sensb_res_len; /* Length of SENSB_RES Response (Byte 2 - Byte 12 or
+                             13) Available after Technology Detection */
+   uint8_t sensb_res[NFC_MAX_SENSB_RES_LEN]; /* SENSB_RES Response (ATQ) */
+   uint8_t nfcid0[NFC_NFCID0_MAX_LEN];
++#if (NXP_EXTNS == TRUE)
++  uint8_t pupiid_len;
++  uint8_t pupiid[NFC_PUPIID_MAX_LEN];
++#endif
+ } tNFC_RF_PB_PARAMS;
+ 
+ #define NFC_MAX_SENSF_RES_LEN NCI_MAX_SENSF_RES_LEN
+diff --git a/src/nfc/include/rw_api.h b/src/nfc/include/rw_api.h
+index 0667b54cd..1c7dcec34 100644
+--- a/src/nfc/include/rw_api.h
++++ b/src/nfc/include/rw_api.h
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This file contains the Near Field Communication (NFC) Reader/Writer mode
+@@ -36,6 +55,9 @@
+ #define RW_T3T_FIRST_EVT 0x60
+ #define RW_T4T_FIRST_EVT 0x80
+ #define RW_I93_FIRST_EVT 0xA0
++#if (NXP_EXTNS == TRUE)
++#define RW_T3BT_FIRST_EVT 0xB0
++#endif
+ #define RW_MFC_FIRST_EVT 0xC0
+ 
+ enum {
+@@ -124,6 +146,10 @@ enum {
+   RW_I93_RAW_FRAME_EVT,        /* Response of raw frame sent         */
+   RW_I93_INTF_ERROR_EVT,       /* RF Interface error event           */
+   RW_I93_MAX_EVT,
++#if (NXP_EXTNS == TRUE)
++  RW_T3BT_RAW_READ_CPLT_EVT,
++  RW_T3BT_MAX_EVT,
++#endif
+ 
+   /* Mifare Classic tag events for tRW_CBACK */
+   RW_MFC_NDEF_DETECT_EVT =
+@@ -1371,6 +1397,9 @@ extern tNFC_STATUS RW_SendRawFrame(uint8_t* p_raw_data, uint16_t data_len);
+ *******************************************************************************/
+ extern tNFC_STATUS RW_SetActivatedTagType(tNFC_ACTIVATE_DEVT* p_activate_params,
+                                           tRW_CBACK* p_cback);
++#if (NXP_EXTNS == TRUE)
++extern tNFC_STATUS RW_T3BtGetPupiID();
++#endif
+ /*******************************************************************************
+ **
+ ** Function         RW_MfcDetectNDef
+diff --git a/src/nfc/include/rw_int.h b/src/nfc/include/rw_int.h
+index 965ac3f50..42e8a2178 100644
+--- a/src/nfc/include/rw_int.h
++++ b/src/nfc/include/rw_int.h
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This file contains the Near Field Communication (NFC) Reader/Writer mode
+@@ -913,6 +932,7 @@ extern void rw_t5t_sm_detect_ndef(NFC_HDR*);
+ extern void rw_t5t_sm_update_ndef(NFC_HDR*);
+ extern void rw_t5t_sm_set_read_only(NFC_HDR*);
+ 
++void nfa_rw_update_pupi_id(uint8_t* p, uint8_t len);
+ extern void rw_t4t_handle_isodep_nak_rsp(uint8_t status, bool is_ntf);
+ 
+ extern tNFC_STATUS rw_mfc_select(uint8_t selres, uint8_t uid[T1T_CMD_UID_LEN]);
+diff --git a/src/nfc/nfc/nfc_ncif.cc b/src/nfc/nfc/nfc_ncif.cc
+index 1eb8d82b3..5562b4529 100644
+--- a/src/nfc/nfc/nfc_ncif.cc
++++ b/src/nfc/nfc/nfc_ncif.cc
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This file contains functions that interface with the NFC NCI transport.
+@@ -1009,7 +1028,11 @@ void nfc_ncif_proc_activate(uint8_t* p, uint8_t len) {
+ 
+   if (evt_data.activate.protocol == NCI_PROTOCOL_18092_ACTIVE)
+     evt_data.activate.protocol = NCI_PROTOCOL_NFC_DEP;
+-
++#if (NXP_EXTNS == TRUE)
++  if ((evt_data.activate.protocol == NCI_PROTOCOL_UNKNOWN) &&
++      (p_intf->type == NCI_INTERFACE_FRAME))
++    evt_data.activate.protocol = NCI_PROTOCOL_T3BT;
++#endif
+   evt_data.activate.rf_tech_param.mode = *p++;
+   buff_size = *p++;
+   num_buff = *p++;
+diff --git a/src/nfc/tags/rw_main.cc b/src/nfc/tags/rw_main.cc
+index bcaa9e726..2c923f0f2 100644
+--- a/src/nfc/tags/rw_main.cc
++++ b/src/nfc/tags/rw_main.cc
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This file contains functions that interface with the NFC NCI transport.
+@@ -287,7 +306,11 @@ tNFC_STATUS RW_SetActivatedTagType(tNFC_ACTIVATE_DEVT* p_activate_params,
+                         p_activate_params->rf_tech_param.param.pf.mrti_check,
+                         p_activate_params->rf_tech_param.param.pf.mrti_update);
+     }
+-  } else if (NFC_PROTOCOL_ISO_DEP == p_activate_params->protocol) {
++  } else if (NFC_PROTOCOL_ISO_DEP == p_activate_params->protocol
++#if (NXP_EXTNS == TRUE)
++             || NFC_PROTOCOL_T3BT == p_activate_params->protocol
++#endif
++    ) {
+     /* ISODEP/4A,4B- NFC-A or NFC-B */
+     if ((p_activate_params->rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_B) ||
+         (p_activate_params->rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_A)) {
+diff --git a/src/nfc/tags/rw_t4t.cc b/src/nfc/tags/rw_t4t.cc
+index ea0075b20..b9f668c7d 100644
+--- a/src/nfc/tags/rw_t4t.cc
++++ b/src/nfc/tags/rw_t4t.cc
+@@ -16,6 +16,25 @@
+  *
+  ******************************************************************************/
+ 
++/******************************************************************************
++
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
+ /******************************************************************************
+  *
+  *  This file contains the implementation for Type 4 tag in Reader/Writer
+@@ -64,7 +83,9 @@ extern unsigned char appl_dta_mode_flag;
+ 
+ /* performing NDEF format               */
+ #define RW_T4T_STATE_NDEF_FORMAT 0x07
+-
++#if (NXP_EXTNS == TRUE)
++#define RW_T3BT_STATE_GET_PROP_DATA 0x08
++#endif
+ /* sub state */
+ /* waiting for response of selecting AID    */
+ #define RW_T4T_SUBSTATE_WAIT_SELECT_APP 0x00
+@@ -94,6 +115,10 @@ extern unsigned char appl_dta_mode_flag;
+ #define RW_T4T_SUBSTATE_WAIT_CREATE_NDEF 0x0E
+ #define RW_T4T_SUBSTATE_WAIT_WRITE_CC 0x0F
+ #define RW_T4T_SUBSTATE_WAIT_WRITE_NDEF 0x10
++#if (NXP_EXTNS == TRUE)
++#define RW_T3BT_SUBSTATE_WAIT_GET_ATTRIB 0x11
++#define RW_T3BT_SUBSTATE_WAIT_GET_PUPI 0x12
++#endif
+ 
+ static std::string rw_t4t_get_state_name(uint8_t state);
+ static std::string rw_t4t_get_sub_state_name(uint8_t sub_state);
+@@ -116,6 +141,10 @@ static bool rw_t4t_create_ccfile(void);
+ static bool rw_t4t_create_ndef(void);
+ static bool rw_t4t_write_cc(void);
+ static bool rw_t4t_write_ndef(void);
++#if (NXP_EXTNS == TRUE)
++static bool rw_t3bt_get_pupi(void);
++static void rw_t3Bt_sm_get_card_id(NFC_HDR* p_r_apdu);
++#endif
+ static void rw_t4t_handle_error(tNFC_STATUS status, uint8_t sw1, uint8_t sw2);
+ static void rw_t4t_sm_detect_ndef(NFC_HDR* p_r_apdu);
+ static void rw_t4t_sm_read_ndef(NFC_HDR* p_r_apdu);
+@@ -761,6 +790,35 @@ static bool rw_t4t_write_ndef(void) {
+   return true;
+ }
+ 
++#if (NXP_EXTNS == TRUE)
++static bool rw_t3bt_get_pupi(void) {
++  NFC_HDR* p_c_apdu;
++  uint8_t* p;
++
++  p_c_apdu = (NFC_HDR*)GKI_getpoolbuf(NFC_RW_POOL_ID);
++
++  if (!p_c_apdu) {
++    LOG(ERROR) << StringPrintf("rw_t3bt_get_pupi (): Cannot allocate buffer");
++    return false;
++  }
++
++  p_c_apdu->offset = NCI_MSG_OFFSET_SIZE + NCI_DATA_HDR_SIZE;
++  p = (uint8_t*)(p_c_apdu + 1) + p_c_apdu->offset;
++
++  UINT8_TO_BE_STREAM(p, 0x00);
++  UINT8_TO_BE_STREAM(p, 0x36);
++  UINT16_TO_BE_STREAM(p, 0x0000);
++  UINT8_TO_BE_STREAM(p, 0x08); /* Lc: length of wrapped data  */
++
++  p_c_apdu->len = 0x05;
++
++  if (!rw_t4t_send_to_lower(p_c_apdu)) {
++    return false;
++  }
++  return true;
++}
++#endif
++
+ /*******************************************************************************
+ **
+ ** Function         rw_t4t_select_file
+@@ -1345,7 +1403,12 @@ static void rw_t4t_handle_error(tNFC_STATUS status, uint8_t sw1, uint8_t sw2) {
+         event = RW_T4T_NDEF_FORMAT_CPLT_EVT;
+         rw_data.status = NFC_STATUS_FAILED;
+         break;
+-
++#if (NXP_EXTNS == TRUE)
++      case RW_T3BT_STATE_GET_PROP_DATA:
++        event = RW_T3BT_RAW_READ_CPLT_EVT;
++        rw_data.status = NFC_STATUS_FAILED;
++        break;
++#endif
+       default:
+         event = RW_T4T_MAX_EVT;
+         break;
+@@ -1541,6 +1604,61 @@ static void rw_t4t_sm_ndef_format(NFC_HDR* p_r_apdu) {
+   }
+ }
+ 
++#if (NXP_EXTNS == TRUE)
++static void rw_t3Bt_sm_get_card_id(NFC_HDR* p_r_apdu) {
++  tRW_T4T_CB* p_t4t = &rw_cb.tcb.t4t;
++  uint8_t* p;
++  uint16_t status_words;
++  tRW_DATA rw_data;
++
++ DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("rw_t3Bt_sm_get_id (): sub_state:%s (%d)",
++                  rw_t4t_get_sub_state_name(p_t4t->sub_state).c_str(),
++                  p_t4t->sub_state);
++
++  /* get status words */
++  p = (uint8_t*)(p_r_apdu + 1) + p_r_apdu->offset;
++
++  switch (p_t4t->sub_state) {
++    case RW_T3BT_SUBSTATE_WAIT_GET_ATTRIB:
++      if ((p_r_apdu->len == 0x00) && ((*p != 0x00) && (*p++ != 0x00))) {
++        rw_t4t_handle_error(NFC_STATUS_CMD_NOT_CMPLTD, *(p - 2), *(p - 1));
++      } else {
++        if (!rw_t3bt_get_pupi()) {
++          rw_t4t_handle_error(NFC_STATUS_FAILED, 0, 0);
++        } else {
++          p_t4t->sub_state = RW_T3BT_SUBSTATE_WAIT_GET_PUPI;
++        }
++      }
++      break;
++
++    case RW_T3BT_SUBSTATE_WAIT_GET_PUPI:
++      p += (p_r_apdu->len - 3);
++      BE_STREAM_TO_UINT16(status_words, p);
++      if (status_words != 0x9000) {
++        rw_t4t_handle_error(NFC_STATUS_CMD_NOT_CMPLTD, *(p - 2), *(p - 1));
++      } else {
++        uint8_t rsp_len = p_r_apdu->len - 3;
++        p = (uint8_t*)(p_r_apdu + 1) +
++            p_r_apdu->offset;  //"p" points to start of response
++        p_t4t->state = RW_T4T_STATE_IDLE;
++        nfa_rw_update_pupi_id(p, rsp_len);
++        if (rw_cb.p_cback) {
++          (*(rw_cb.p_cback))(RW_T3BT_RAW_READ_CPLT_EVT, &rw_data);
++        } else {
++          LOG(ERROR) << StringPrintf("rw_t3Bt_sm_get_id (): NULL callback");
++        }
++      }
++      break;
++
++    default:
++      LOG(ERROR) << StringPrintf("rw_t3Bt_sm_get_id (): unknown sub_state=%d",
++                      p_t4t->sub_state);
++      rw_t4t_handle_error(NFC_STATUS_FAILED, 0, 0);
++      break;
++  }
++}
++#endif
++
+ /*******************************************************************************
+ **
+ ** Function         rw_t4t_sm_detect_ndef
+@@ -2341,6 +2459,12 @@ static void rw_t4t_data_cback(__attribute__((unused)) uint8_t conn_id,
+       rw_t4t_sm_ndef_format(p_r_apdu);
+       GKI_freebuf(p_r_apdu);
+       break;
++#if (NXP_EXTNS == TRUE)
++    case RW_T3BT_STATE_GET_PROP_DATA:
++      rw_t3Bt_sm_get_card_id(p_r_apdu);
++      GKI_freebuf(p_r_apdu);
++      break;
++#endif
+     default:
+       LOG(ERROR) << StringPrintf("%s - invalid state=%d", __func__,
+                                  p_t4t->state);
+@@ -2934,6 +3058,39 @@ tNFC_STATUS RW_T4tSetNDefReadOnly(void) {
+   return (retval);
+ }
+ 
++#if (NXP_EXTNS == TRUE)
++tNFC_STATUS RW_T3BtGetPupiID(void) {
++  NFC_HDR* p_c_apdu;
++  uint8_t* p;
++
++  p_c_apdu = (NFC_HDR*)GKI_getpoolbuf(NFC_RW_POOL_ID);
++
++  if (!p_c_apdu) {
++    LOG(ERROR) << StringPrintf("RW_T3BtGetPupiID (): Cannot allocate buffer");
++    return false;
++  }
++
++  p_c_apdu->offset = NCI_MSG_OFFSET_SIZE + NCI_DATA_HDR_SIZE;
++  p = (uint8_t*)(p_c_apdu + 1) + p_c_apdu->offset;
++
++  UINT8_TO_BE_STREAM(p, 0x1D);
++  UINT16_TO_BE_STREAM(p, 0x0000);
++  UINT16_TO_BE_STREAM(p, 0x0000);
++  UINT16_TO_BE_STREAM(p, 0x0008);
++  UINT16_TO_BE_STREAM(p, 0x0100);
++
++  p_c_apdu->len = 0x09;
++
++  if (!rw_t4t_send_to_lower(p_c_apdu)) {
++    return false;
++  }
++
++  rw_cb.tcb.t4t.state = RW_T3BT_STATE_GET_PROP_DATA;
++  rw_cb.tcb.t4t.sub_state = RW_T3BT_SUBSTATE_WAIT_GET_ATTRIB;
++  return true;
++}
++#endif
++
+ /*******************************************************************************
+ **
+ ** Function         rw_t4t_get_state_name
+-- 
+2.35.1
+
+
+From 011a145325fb7c846c0615c1662242814031482a Mon Sep 17 00:00:00 2001
+From: nxf36764 <kumarnarayan.bhat@nxp.com>
+Date: Thu, 24 Feb 2022 20:54:55 +0530
+Subject: [PATCH 5/5] [artf945100][libnfc-nci]: Fixed incorrect integration of
+ libnf-nci.conf file
+
+To avoid any conflict of libnfc-nci.conf with AOSP, conf folder is removed from repo
+---
+ conf/Android.bp      | 28 ---------------
+ conf/libnfc-nci.conf | 82 --------------------------------------------
+ 2 files changed, 110 deletions(-)
+ delete mode 100644 conf/Android.bp
+ delete mode 100644 conf/libnfc-nci.conf
+
+diff --git a/conf/Android.bp b/conf/Android.bp
+deleted file mode 100644
+index 1f62fe0fa..000000000
+--- a/conf/Android.bp
++++ /dev/null
+@@ -1,28 +0,0 @@
+-// Copyright (C) 2020 The Android Open Source Project
+-//
+-// Licensed under the Apache License, Version 2.0 (the "License");
+-// you may not use this file except in compliance with the License.
+-// You may obtain a copy of the License at
+-//
+-//      http://www.apache.org/licenses/LICENSE-2.0
+-//
+-// Unless required by applicable law or agreed to in writing, software
+-// distributed under the License is distributed on an "AS IS" BASIS,
+-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-// See the License for the specific language governing permissions and
+-// limitations under the License.
+-
+-package {
+-    // See: http://go/android-license-faq
+-    // A large-scale-change added 'default_applicable_licenses' to import
+-    // all of the 'license_kinds' from "system_nfc_license"
+-    // to get the below license kinds:
+-    //   SPDX-license-identifier-Apache-2.0
+-    default_applicable_licenses: ["system_nfc_license"],
+-}
+-
+-prebuilt_etc {
+-    name: "libnfc-nci.conf-default",
+-    src: "libnfc-nci.conf",
+-    filename: "libnfc-nci.conf",
+-}
+diff --git a/conf/libnfc-nci.conf b/conf/libnfc-nci.conf
+deleted file mode 100644
+index f07f0edfd..000000000
+--- a/conf/libnfc-nci.conf
++++ /dev/null
+@@ -1,82 +0,0 @@
+-###############################################################################
+-# Debug options
+-NFC_DEBUG_ENABLED=0
+-
+-###############################################################################
+-# File used for NFA storage
+-NFA_STORAGE="/data/nfc"
+-PRESERVE_STORAGE=0x01
+-
+-###############################################################################
+-# When screen is turned off, specify the desired power state of the controller.
+-# 0: power-off-sleep state; DEFAULT
+-# 1: full-power state
+-# 2: screen-off card-emulation (CE4/CE3/CE1 modes are used)
+-SCREEN_OFF_POWER_STATE=1
+-
+-###############################################################################
+-# Default poll duration (in ms)
+-# Default is 500ms if not set (see nfc_target.h)
+-#NFA_DM_DISC_DURATION_POLL=333
+-
+-###############################################################################
+-# Force tag polling for the following technology(s).
+-# The bits are defined as tNFA_TECHNOLOGY_MASK in nfa_api.h.
+-# Default is NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B |
+-#            NFA_TECHNOLOGY_MASK_F | NFA_TECHNOLOGY_MASK_ISO15693 |
+-#            NFA_TECHNOLOGY_MASK_B_PRIME | NFA_TECHNOLOGY_MASK_KOVIO |
+-#            NFA_TECHNOLOGY_MASK_A_ACTIVE | NFA_TECHNOLOGY_MASK_F_ACTIVE.
+-#
+-# Notable bits:
+-# NFA_TECHNOLOGY_MASK_A             0x01    /* NFC Technology A             */
+-# NFA_TECHNOLOGY_MASK_B             0x02    /* NFC Technology B             */
+-# NFA_TECHNOLOGY_MASK_F             0x04    /* NFC Technology F             */
+-# NFA_TECHNOLOGY_MASK_ISO15693      0x08    /* Proprietary Technology       */
+-# NFA_TECHNOLOGY_MASK_KOVIO         0x20    /* Proprietary Technology       */
+-# NFA_TECHNOLOGY_MASK_A_ACTIVE      0x40    /* NFC Technology A active mode */
+-# NFA_TECHNOLOGY_MASK_F_ACTIVE      0x80    /* NFC Technology F active mode */
+-POLLING_TECH_MASK=0x2F
+-
+-###############################################################################
+-# Force P2P to only listen for the following technology(s).
+-# The bits are defined as tNFA_TECHNOLOGY_MASK in nfa_api.h.
+-# Default is NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_F |
+-#            NFA_TECHNOLOGY_MASK_A_ACTIVE | NFA_TECHNOLOGY_MASK_F_ACTIVE
+-#
+-# Notable bits:
+-# NFA_TECHNOLOGY_MASK_A             0x01    /* NFC Technology A             */
+-# NFA_TECHNOLOGY_MASK_F             0x04    /* NFC Technology F             */
+-# NFA_TECHNOLOGY_MASK_A_ACTIVE      0x40    /* NFC Technology A active mode */
+-# NFA_TECHNOLOGY_MASK_F_ACTIVE      0x80    /* NFC Technology F active mode */
+-P2P_LISTEN_TECH_MASK=0x00
+-
+-###############################################################################
+-# Force UICC to only listen to the following technology(s).
+-# The bits are defined as tNFA_TECHNOLOGY_MASK in nfa_api.h.
+-# Default is NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B | NFA_TECHNOLOGY_MASK_F
+-UICC_LISTEN_TECH_MASK=0x07
+-
+-###############################################################################
+-# Override the stack default for NFA_EE_MAX_EE_SUPPORTED set in nfc_target.h.
+-# The value is set to 3 by default as it assumes we will discover 0xF2,
+-# 0xF3, and 0xF4. If a platform will exclude and SE, this value can be reduced
+-# so that the stack will not wait any longer than necessary.
+-# Maximum EE supported number
+-# NXP PN547C2 0x02
+-# NXP PN65T 0x03
+-# NXP PN548C2 0x02
+-# NXP PN66T 0x03
+-NFA_MAX_EE_SUPPORTED=0x02
+-
+-###############################################################################
+-# AID for Empty Select command
+-# If specified, this AID will be substituted when an Empty SELECT command is
+-# detected.  The first byte is the length of the AID.  Maximum length is 16.
+-AID_FOR_EMPTY_SELECT={08:A0:00:00:01:51:00:00:00}
+-
+-###############################################################################
+-# AID_MATCHING constants
+-# AID_MATCHING_EXACT_ONLY 0x00
+-# AID_MATCHING_EXACT_OR_PREFIX 0x01
+-# AID_MATCHING_PREFIX_ONLY 0x02
+-AID_MATCHING_MODE=0x01
+-- 
+2.35.1
 

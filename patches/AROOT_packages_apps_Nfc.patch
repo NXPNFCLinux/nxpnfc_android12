@@ -1,7 +1,7 @@
 From 10a6d6fa7aed9ebb43eabd36d9ef396889ad4717 Mon Sep 17 00:00:00 2001
 From: nxf36764 <kumarnarayan.bhat@nxp.com>
 Date: Fri, 22 Oct 2021 18:40:02 +0530
-Subject: [PATCH 1/2] [artf902241][Bring up] Initial NFC bringup.
+Subject: [PATCH 1/3] [artf902241][Bring up] Initial NFC bringup.
 
 Checking out patches of PN7160 And12 for tag android-12.0.0_r2
 ---
@@ -114,13 +114,13 @@ index 0e04fdf5..9cf80757 100644
      private static final byte[] TYPE_BT_OOB = "application/vnd.bluetooth.ep.oob"
              .getBytes(StandardCharsets.US_ASCII);
 -- 
-2.34.1
+2.35.1
 
 
 From cfbb7298078c80ac4cee3cefe3f27211152d10da Mon Sep 17 00:00:00 2001
 From: nxf36764 <kumarnarayan.bhat@nxp.com>
 Date: Thu, 28 Oct 2021 13:11:00 +0530
-Subject: [PATCH 2/2] [artf905105][T4TEE]T4T Ndef emulation integration
+Subject: [PATCH 2/3] [artf905105][T4TEE]T4T Ndef emulation integration
 
 Ported T4T ndef emulation from android 11 7160 nfc stack to android 12 7160 nfc stack
 ---
@@ -3110,5 +3110,207 @@ index 00000000..5f6e743a
 +}
 \ No newline at end of file
 -- 
-2.34.1
+2.35.1
+
+
+From 227e5d62a8e62264fb0e68887ea6d43f6acc8d03 Mon Sep 17 00:00:00 2001
+From: nxf36764 <kumarnarayan.bhat@nxp.com>
+Date: Thu, 24 Feb 2022 14:39:32 +0530
+Subject: [PATCH 3/3] [artf936463][China ID]: Added support for ChinaID and
+ China Transit cards.
+
+To support Type3 B tag detection inform upper layer
+---
+ nci/jni/NativeNfcTag.cpp | 63 ++++++++++++++++++++++++++++++++++++++--
+ nci/jni/NfcTag.cpp       | 51 ++++++++++++++++++++++++++++----
+ 2 files changed, 106 insertions(+), 8 deletions(-)
+
+diff --git a/nci/jni/NativeNfcTag.cpp b/nci/jni/NativeNfcTag.cpp
+index 565106ad..48c88fdb 100644
+--- a/nci/jni/NativeNfcTag.cpp
++++ b/nci/jni/NativeNfcTag.cpp
+@@ -15,9 +15,7 @@
+  */
+ /******************************************************************************
+  *
+- *  The original Work has been changed by NXP Semiconductors.
+- *
+- *  Copyright (C) 2020 NXP Semiconductors
++ *  Copyright 2022 NXP
+  *
+  *  Licensed under the Apache License, Version 2.0 (the "License");
+  *  you may not use this file except in compliance with the License.
+@@ -129,6 +127,10 @@ uint8_t RW_DESELECT_REQ[] = {0xC2};
+ static jboolean sWriteOk = JNI_FALSE;
+ static jboolean sWriteWaitingForComplete = JNI_FALSE;
+ static bool sFormatOk = false;
++static bool sIsCheckingNDef = false;
++#if (NXP_EXTNS == TRUE)
++static uint8_t Presence_check_TypeB[] = {0xB2};
++#endif
+ static jboolean sConnectOk = JNI_FALSE;
+ static jboolean sConnectWaitingForComplete = JNI_FALSE;
+ static bool sGotDeactivate = false;
+@@ -584,6 +586,13 @@ static jint nativeNfcTag_doConnect(JNIEnv*, jobject, jint targetHandle) {
+     goto TheEnd;
+   }
+ 
++  #if (NXP_EXTNS == TRUE)
++  sCurrentConnectedHandle = targetHandle;
++  if (sCurrentConnectedTargetProtocol == NFC_PROTOCOL_T3BT) {
++    goto TheEnd;
++  }
++#endif
++
+   sCurrentConnectedTargetType = natTag.mTechList[i];
+   sCurrentConnectedTargetProtocol = natTag.mTechLibNfcTypes[i];
+   sCurrentConnectedHandle = targetHandle;
+@@ -1242,6 +1251,18 @@ static jint nativeNfcTag_doCheckNdef(JNIEnv* e, jobject o, jintArray ndefInfo) {
+ 
+   DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: enter", __func__);
+ 
++  sIsCheckingNDef = true;
++#if (NXP_EXTNS == TRUE)
++  if (sCurrentConnectedTargetProtocol == NFA_PROTOCOL_T3BT) {
++    ndef = e->GetIntArrayElements(ndefInfo, 0);
++    ndef[0] = 0;
++    ndef[1] = NDEF_MODE_READ_ONLY;
++    e->ReleaseIntArrayElements(ndefInfo, ndef, 0);
++    sIsCheckingNDef = false;
++    return NFA_STATUS_FAILED;
++  }
++#endif
++
+   // special case for Kovio
+   if (sCurrentConnectedTargetProtocol == TARGET_TYPE_KOVIO_BARCODE) {
+     DLOG_IF(INFO, nfc_debug_enabled)
+@@ -1384,6 +1405,7 @@ static jboolean nativeNfcTag_doPresenceCheck(JNIEnv*, jobject) {
+   DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s", __func__);
+   tNFA_STATUS status = NFA_STATUS_OK;
+   jboolean isPresent = JNI_FALSE;
++  int handle = sCurrentConnectedHandle;
+ 
+   // Special case for Kovio.  The deactivation would have already occurred
+   // but was ignored so that normal tag opertions could complete.  Now we
+@@ -1426,6 +1448,41 @@ static jboolean nativeNfcTag_doPresenceCheck(JNIEnv*, jobject) {
+         << StringPrintf("%s: tag already deactivated", __func__);
+     return JNI_FALSE;
+   }
++
++  #if (NXP_EXTNS == TRUE)
++  if (NfcTag::getInstance().mTechLibNfcTypes[handle] == NFA_PROTOCOL_T3BT) {
++    uint8_t* pbuf = NULL;
++    uint8_t bufLen = 0x00;
++    bool waitOk = false;
++    int timeout =
++        NfcTag::getInstance().getTransceiveTimeout(sCurrentConnectedTargetType);
++    DLOG_IF(INFO, nfc_debug_enabled)
++        << StringPrintf("%s: enter; timeout = %d", __func__, timeout);
++
++    SyncEventGuard g(sTransceiveEvent);
++    sTransceiveRfTimeout = false;
++    sWaitingForTransceive = true;
++    // sTransceiveDataLen = 0;
++    bufLen = (uint8_t)sizeof(Presence_check_TypeB);
++    pbuf = Presence_check_TypeB;
++    // memcpy(pbuf, Attrib_cmd_TypeB, bufLen);
++    status = NFA_SendRawFrame(pbuf, bufLen,
++                              NFA_DM_DEFAULT_PRESENCE_CHECK_START_DELAY);
++    if (status != NFA_STATUS_OK) {
++      LOG(ERROR) << StringPrintf("%s: fail send; error=%d", __func__, status);
++    } else
++      waitOk = sTransceiveEvent.wait(timeout);
++
++    if (waitOk == false || sTransceiveRfTimeout)  // if timeout occurred
++    {
++      return JNI_FALSE;
++      ;
++    } else {
++      return JNI_TRUE;
++    }
++  }
++#endif
++
+   if (sCurrentConnectedTargetProtocol == NFC_PROTOCOL_MIFARE && legacy_mfc_reader) {
+     status = EXTNS_MfcPresenceCheck();
+     if (status == NFCSTATUS_SUCCESS) {
+diff --git a/nci/jni/NfcTag.cpp b/nci/jni/NfcTag.cpp
+index cfe3b110..7879f10b 100755
+--- a/nci/jni/NfcTag.cpp
++++ b/nci/jni/NfcTag.cpp
+@@ -13,7 +13,23 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
+-
++/******************************************************************************
++ *
++ *  Copyright 2022 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
+ /*
+  *  Tag-reading, tag-writing operations.
+  */
+@@ -402,7 +418,17 @@ void NfcTag::discoverTechnologies(tNFA_ACTIVATED& activationData) {
+     mTechList[mNumTechList] =
+         TARGET_TYPE_MIFARE_CLASSIC;  // is TagTechnology.MIFARE_CLASSIC by Java
+                                      // API
+-  } else {
++  } 
++  else if (NFC_PROTOCOL_T3BT == rfDetail.protocol) {
++    mTechHandles[mNumTechList] = rfDetail.rf_disc_id;
++    mTechLibNfcTypes[mNumTechList] = rfDetail.protocol;
++    mTechList[mNumTechList] =
++        TARGET_TYPE_ISO14443_3B;  // is TagTechnology.NFC_B by Java API
++    // save the stack's data structure for interpretation later
++    memcpy(&(mTechParams[mNumTechList]), &(rfDetail.rf_tech_param),
++           sizeof(rfDetail.rf_tech_param));
++  } 
++  else {
+     LOG(ERROR) << StringPrintf("%s: unknown protocol ????", fn);
+     mTechList[mNumTechList] = TARGET_TYPE_UNKNOWN;
+   }
+@@ -968,10 +994,25 @@ void NfcTag::fillNativeNfcTagMembers5(JNIEnv* e, jclass tag_cls, jobject tag,
+              NFC_DISCOVERY_TYPE_POLL_B_PRIME == mTechParams[0].mode ||
+              NFC_DISCOVERY_TYPE_LISTEN_B == mTechParams[0].mode ||
+              NFC_DISCOVERY_TYPE_LISTEN_B_PRIME == mTechParams[0].mode) {
+-    DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: tech B", fn);
+-    uid.reset(e->NewByteArray(NFC_NFCID0_MAX_LEN));
+-    e->SetByteArrayRegion(uid.get(), 0, NFC_NFCID0_MAX_LEN,
++#if (NXP_EXTNS == TRUE)
++    if (activationData.activate_ntf.protocol != NFA_PROTOCOL_T3BT)
++#endif
++    {
++      DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: tech B", fn);
++      uid.reset(e->NewByteArray(NFC_NFCID0_MAX_LEN));
++      e->SetByteArrayRegion(uid.get(), 0, NFC_NFCID0_MAX_LEN,
+                           (jbyte*)&mTechParams[0].param.pb.nfcid0);
++    }
++#if (NXP_EXTNS == TRUE)
++    else {
++      DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: chinaId card", fn);
++      DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
++          "%s: pipi_id[0]=%x", fn, mTechParams[0].param.pb.pupiid[0]);
++      uid.reset(e->NewByteArray(NFC_PUPIID_MAX_LEN));
++      e->SetByteArrayRegion(uid.get(), 0, NFC_PUPIID_MAX_LEN,
++                            (jbyte*)&mTechParams[0].param.pb.pupiid);
++    }
++#endif
+   } else if (NFC_DISCOVERY_TYPE_POLL_F == mTechParams[0].mode ||
+              NFC_DISCOVERY_TYPE_POLL_F_ACTIVE == mTechParams[0].mode ||
+              NFC_DISCOVERY_TYPE_LISTEN_F == mTechParams[0].mode ||
+-- 
+2.35.1
 

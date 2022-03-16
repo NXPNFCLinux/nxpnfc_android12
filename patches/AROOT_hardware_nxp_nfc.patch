@@ -1,10 +1,18 @@
-From 1c56d06ecbb7eebf6800d5316223e732f125d89b Mon Sep 17 00:00:00 2001
+From ef02ada2945a6c49887ece169151ae4a71a67727 Mon Sep 17 00:00:00 2001
 From: nxf36764 <kumarnarayan.bhat@nxp.com>
-Date: Tue, 4 Jan 2022 16:40:49 +0530
-Subject: [PATCH] Base code 1 (compilation success)
+Date: Thu, 28 Oct 2021 13:04:46 +0530
+Subject: [PATCH 1/3] [artf905105][T4TEE]T4T Ndef emulation integration
 
+Ported T4T ndef emulation from android 11 7160 nfc stack to android 12 7160 nfc stack
 ---
- Android.bp                                    |   2 +-
+ halimpl/tml/NfccTransportFactory.cc           |  79 +++
+ halimpl/tml/NfccTransportFactory.h            |  67 +++
+ halimpl/tml/transport/NfccI2cTransport.cc     | 533 ++++++++++++++++++
+ halimpl/tml/transport/NfccI2cTransport.h      | 266 +++++++++
+ halimpl/tml/transport/NfccSpiTransport.cc     | 533 ++++++++++++++++++
+ halimpl/tml/transport/NfccSpiTransport.h      | 266 +++++++++
+ halimpl/tml/transport/NfccTransport.cc        |  50 ++
+ halimpl/tml/transport/NfccTransport.h         | 246 ++++++++
  intf/nxpnfc/1.0/manifest.xml                  |  10 +-
  pn8x/1.1/Nfc.h                                |   4 +-
  pn8x/Android.bp                               |   6 +-
@@ -34,7 +42,15 @@ Subject: [PATCH] Base code 1 (compilation success)
  pn8x/halimpl/utils/NxpNfcCapability.cpp       |  14 +-
  pn8x/halimpl/utils/phNxpConfig.h              |   8 +-
  pn8x/halimpl/utils/phNxpNciHal_utils.cc       |  16 +-
- 30 files changed, 2506 insertions(+), 55 deletions(-)
+ 37 files changed, 4545 insertions(+), 54 deletions(-)
+ create mode 100644 halimpl/tml/NfccTransportFactory.cc
+ create mode 100644 halimpl/tml/NfccTransportFactory.h
+ create mode 100644 halimpl/tml/transport/NfccI2cTransport.cc
+ create mode 100644 halimpl/tml/transport/NfccI2cTransport.h
+ create mode 100644 halimpl/tml/transport/NfccSpiTransport.cc
+ create mode 100644 halimpl/tml/transport/NfccSpiTransport.h
+ create mode 100644 halimpl/tml/transport/NfccTransport.cc
+ create mode 100644 halimpl/tml/transport/NfccTransport.h
  create mode 100755 pn8x/halimpl/tml/NfccTransportFactory.cc
  create mode 100755 pn8x/halimpl/tml/NfccTransportFactory.h
  create mode 100755 pn8x/halimpl/tml/transport/NfccI2cTransport.cc
@@ -44,17 +60,2094 @@ Subject: [PATCH] Base code 1 (compilation success)
  create mode 100755 pn8x/halimpl/tml/transport/NfccTransport.cc
  create mode 100755 pn8x/halimpl/tml/transport/NfccTransport.h
 
-diff --git a/Android.bp b/Android.bp
-index 2c557a6..d3eb133 100644
---- a/Android.bp
-+++ b/Android.bp
-@@ -32,5 +32,5 @@ license {
- }
- 
- subdirs = [
--    "snxxx","intf","pn8x",
-+    "intf","pn8x",
- ]
+diff --git a/halimpl/tml/NfccTransportFactory.cc b/halimpl/tml/NfccTransportFactory.cc
+new file mode 100644
+index 0000000..b626cf2
+--- /dev/null
++++ b/halimpl/tml/NfccTransportFactory.cc
+@@ -0,0 +1,79 @@
++/******************************************************************************
++ *
++ *  Copyright 2020-2021 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
++#include <NfccI2cTransport.h>
++#include <NfccSpiTransport.h>
++#include <NfccTransportFactory.h>
++#include <phNxpLog.h>
++
++/*******************************************************************************
++ **
++ ** Function         NfccTransportFactory
++ **
++ ** Description      Constructor for transportFactory. This will be private to
++ **                  support singleton
++ **
++ ** Parameters       none
++ **
++ ** Returns          none
++ ******************************************************************************/
++NfccTransportFactory::NfccTransportFactory() {}
++
++/*******************************************************************************
++**
++** Function         getTransport
++**
++** Description      selects and returns transport channel based on the input
++**                  parameter
++**
++** Parameters       Required transport Type
++**
++** Returns          Selected transport channel
++******************************************************************************/
++NfccTransportFactory &NfccTransportFactory::getInstance() {
++  static NfccTransportFactory mTransprtFactoryInstance;
++  return mTransprtFactoryInstance;
++}
++
++/*******************************************************************************
++**
++** Function         getTransport
++**
++** Description      selects and returns transport channel based on the input
++**                  parameter
++**
++** Parameters       Required transport Type
++**
++** Returns          Selected transport channel
++******************************************************************************/
++spTransport NfccTransportFactory::getTransport(transportIntf transportType) {
++  NXPLOG_TML_D("%s Requested transportType: %d\n", __func__, transportType);
++  spTransport mspTransportInterface;
++  switch (transportType) {
++    case I2C:
++    case UNKNOWN:
++      mspTransportInterface = std::make_shared<NfccI2cTransport>();
++      break;
++    case SPI:
++      mspTransportInterface = std::make_shared<NfccSpiTransport>();
++    default:
++      mspTransportInterface = std::make_shared<NfccI2cTransport>();
++      break;
++  }
++  return mspTransportInterface;
++}
+diff --git a/halimpl/tml/NfccTransportFactory.h b/halimpl/tml/NfccTransportFactory.h
+new file mode 100644
+index 0000000..34cec36
+--- /dev/null
++++ b/halimpl/tml/NfccTransportFactory.h
+@@ -0,0 +1,67 @@
++/******************************************************************************
++ *
++ *  Copyright 2020-2021 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
++#pragma once
++#include <NfccTransport.h>
++#include <memory>
++
++#define transportFactory (NfccTransportFactory::getInstance())
++typedef std::shared_ptr<NfccTransport> spTransport;
++enum transportIntf { I2C, SPI, UNKNOWN };
++
++extern spTransport gpTransportObj;
++class NfccTransportFactory {
++  /*****************************************************************************
++   **
++   ** Function         NfccTransportFactory
++   **
++   ** Description      Constructor for transportFactory. This will be private to
++   **                  support singleton
++   **
++   ** Parameters       none
++   **
++   ** Returns          none
++   ****************************************************************************/
++  NfccTransportFactory();
++
++public:
++  /*****************************************************************************
++   **
++   ** Function         getInstance
++   **
++   ** Description      returns the static instance of TransportFactory
++   **
++   ** Parameters       none
++   **
++   ** Returns          TransportFactory instance
++   ****************************************************************************/
++  static NfccTransportFactory &getInstance();
++
++  /*****************************************************************************
++  **
++  ** Function         getTransport
++  **
++  ** Description      selects and returns transport channel based on the input
++  **                  parameter
++  **
++  ** Parameters       Required transport Type
++  **
++  ** Returns          Selected transport channel
++  ****************************************************************************/
++  spTransport getTransport(transportIntf transportType);
++};
+diff --git a/halimpl/tml/transport/NfccI2cTransport.cc b/halimpl/tml/transport/NfccI2cTransport.cc
+new file mode 100644
+index 0000000..cc76f11
+--- /dev/null
++++ b/halimpl/tml/transport/NfccI2cTransport.cc
+@@ -0,0 +1,533 @@
++/******************************************************************************
++ *  Copyright 2020-2021 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
++#include <errno.h>
++#include <fcntl.h>
++#include <hardware/nfc.h>
++#include <stdlib.h>
++#include <sys/ioctl.h>
++#include <sys/select.h>
++#include <termios.h>
++#include <unistd.h>
++
++#include "phNxpNciHal_utils.h"
++#include <NfccI2cTransport.h>
++#include <phNfcStatus.h>
++#include <phNxpLog.h>
++#include <string.h>
++
++#define CRC_LEN 2
++#define NORMAL_MODE_HEADER_LEN 3
++#define FW_DNLD_HEADER_LEN 2
++#define FW_DNLD_LEN_OFFSET 1
++#define NORMAL_MODE_LEN_OFFSET 2
++#define FRAGMENTSIZE_MAX PHNFC_I2C_FRAGMENT_SIZE
++extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
++extern phTmlNfc_Context_t *gpphTmlNfc_Context;
++/*******************************************************************************
++**
++** Function         Close
++**
++** Description      Closes NFCC device
++**
++** Parameters       pDevHandle - device handle
++**
++** Returns          None
++**
++*******************************************************************************/
++void NfccI2cTransport::Close(void *pDevHandle) {
++  if (NULL != pDevHandle) {
++    close((intptr_t)pDevHandle);
++  }
++  sem_destroy(&mTxRxSemaphore);
++  return;
++}
++
++/*******************************************************************************
++**
++** Function         OpenAndConfigure
++**
++** Description      Open and configure NFCC device
++**
++** Parameters       pConfig     - hardware information
++**                  pLinkHandle - device handle
++**
++** Returns          NFC status:
++**                  NFCSTATUS_SUCCESS - open_and_configure operation success
++**                  NFCSTATUS_INVALID_DEVICE - device open operation failure
++**
++*******************************************************************************/
++NFCSTATUS NfccI2cTransport::OpenAndConfigure(pphTmlNfc_Config_t pConfig,
++                                             void **pLinkHandle) {
++  int nHandle;
++
++  NXPLOG_TML_D("%s Opening port=%s\n", __func__, pConfig->pDevName);
++  /* open port */
++  nHandle = open((const char *)pConfig->pDevName, O_RDWR);
++  if (nHandle < 0) {
++    NXPLOG_TML_E("_i2c_open() Failed: retval %x", nHandle);
++    *pLinkHandle = NULL;
++    return NFCSTATUS_INVALID_DEVICE;
++  }
++
++  *pLinkHandle = (void *)((intptr_t)nHandle);
++  if (0 != sem_init(&mTxRxSemaphore, 0, 1)) {
++    NXPLOG_TML_E("%s Failed: reason sem_init : retval %x", __func__, nHandle);
++  }
++  /*Reset PN54X*/
++  NfccReset((void *)((intptr_t)nHandle), MODE_POWER_OFF);
++  usleep(10 * 1000);
++  NfccReset((void *)((intptr_t)nHandle), MODE_POWER_ON);
++
++  return NFCSTATUS_SUCCESS;
++}
++
++/*******************************************************************************
++**
++** Function         Flushdata
++**
++** Description      Reads payload of FW rsp from NFCC device into given buffer
++**
++** Parameters       pDevHandle - valid device handle
++**                  pBuffer    - buffer for read data
++**                  numRead    - number of bytes read by calling function
++**
++** Returns          always returns -1
++**
++*******************************************************************************/
++int NfccI2cTransport::Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead) {
++  int retRead = 0;
++  uint16_t totalBtyesToRead = pBuffer[FW_DNLD_LEN_OFFSET] + FW_DNLD_HEADER_LEN + CRC_LEN;
++  /* we shall read totalBtyesToRead-1 as one byte is already read by calling function*/
++  retRead = read((intptr_t)pDevHandle, pBuffer + numRead, totalBtyesToRead - 1);
++  if (retRead > 0) {
++    numRead += retRead;
++    phNxpNciHal_print_packet("RECV", pBuffer, numRead);
++  } else if (retRead == 0) {
++    NXPLOG_TML_E("%s _i2c_read() [pyld] EOF", __func__);
++  } else {
++    if (bFwDnldFlag == false) {
++      NXPLOG_TML_D("%s _i2c_read() [hdr] received", __func__);
++      phNxpNciHal_print_packet("RECV", pBuffer - numRead, NORMAL_MODE_HEADER_LEN);
++    }
++    NXPLOG_TML_E("%s _i2c_read() [pyld] errno : %x", __func__, errno);
++  }
++  SemPost();
++  return -1;
++}
++
++/*******************************************************************************
++**
++** Function         Read
++**
++** Description      Reads requested number of bytes from NFCC device into given
++**                  buffer
++**
++** Parameters       pDevHandle       - valid device handle
++**                  pBuffer          - buffer for read data
++**                  nNbBytesToRead   - number of bytes requested to be read
++**
++** Returns          numRead   - number of successfully read bytes
++**                  -1        - read operation failure
++**
++*******************************************************************************/
++int NfccI2cTransport::Read(void *pDevHandle, uint8_t *pBuffer,
++                           int nNbBytesToRead) {
++  int ret_Read;
++  int ret_Select;
++  int numRead = 0;
++  struct timeval tv;
++  fd_set rfds;
++  uint16_t totalBtyesToRead = 0;
++
++  UNUSED(nNbBytesToRead);
++  if (NULL == pDevHandle) {
++    return -1;
++  }
++
++  if (bFwDnldFlag == false) {
++    totalBtyesToRead = NORMAL_MODE_HEADER_LEN;
++  } else {
++    totalBtyesToRead = FW_DNLD_HEADER_LEN;
++  }
++
++  /* Read with 2 second timeout, so that the read thread can be aborted
++     when the NFCC does not respond and we need to switch to FW download
++     mode. This should be done via a control socket instead. */
++  FD_ZERO(&rfds);
++  FD_SET((intptr_t)pDevHandle, &rfds);
++  tv.tv_sec = 2;
++  tv.tv_usec = 1;
++
++  ret_Select =
++      select((int)((intptr_t)pDevHandle + (int)1), &rfds, NULL, NULL, &tv);
++  if (ret_Select < 0) {
++    NXPLOG_TML_D("%s errno : %x", __func__, errno);
++    return -1;
++  } else if (ret_Select == 0) {
++    NXPLOG_TML_D("%s Timeout", __func__);
++    return -1;
++  } else {
++    ret_Read = read((intptr_t)pDevHandle, pBuffer, totalBtyesToRead - numRead);
++    if (ret_Read > 0 && !(pBuffer[0] == 0xFF && pBuffer[1] == 0xFF)) {
++      SemTimedWait();
++      numRead += ret_Read;
++    } else if (ret_Read == 0) {
++      NXPLOG_TML_E("%s [hdr]EOF", __func__);
++      return -1;
++    } else {
++      NXPLOG_TML_E("%s [hdr] errno : %x", __func__, errno);
++      NXPLOG_TML_E(" %s pBuffer[0] = %x pBuffer[1]= %x", __func__, pBuffer[0],
++                   pBuffer[1]);
++      return -1;
++    }
++
++    if (bFwDnldFlag == false) {
++      totalBtyesToRead = NORMAL_MODE_HEADER_LEN;
++#if(NXP_EXTNS == TRUE)
++      if (gpphTmlNfc_Context->tReadInfo.pContext != NULL &&
++              !memcmp(gpphTmlNfc_Context->tReadInfo.pContext, "MinOpen", 0x07) &&
++              !pBuffer[0] && pBuffer[1]) {
++        return Flushdata(pDevHandle, pBuffer, numRead);
++      }
++#endif
++    } else {
++      totalBtyesToRead = FW_DNLD_HEADER_LEN;
++    }
++
++    if (numRead < totalBtyesToRead) {
++      ret_Read = read((intptr_t)pDevHandle, (pBuffer + numRead), totalBtyesToRead - numRead);
++
++      if (ret_Read != totalBtyesToRead - numRead) {
++        SemPost();
++        NXPLOG_TML_E("%s [hdr] errno : %x", __func__, errno);
++        return -1;
++      } else {
++        numRead += ret_Read;
++      }
++    }
++    if (bFwDnldFlag == true) {
++      totalBtyesToRead = pBuffer[FW_DNLD_LEN_OFFSET] + FW_DNLD_HEADER_LEN + CRC_LEN;
++    } else {
++      totalBtyesToRead = pBuffer[NORMAL_MODE_LEN_OFFSET] + NORMAL_MODE_HEADER_LEN;
++    }
++    if ((totalBtyesToRead - numRead) != 0) {
++      ret_Read = read((intptr_t)pDevHandle, (pBuffer + numRead), totalBtyesToRead - numRead);
++      if (ret_Read > 0) {
++        numRead += ret_Read;
++      } else if (ret_Read == 0) {
++        SemPost();
++        NXPLOG_TML_E("%s [pyld] EOF", __func__);
++        return -1;
++      } else {
++        if (bFwDnldFlag == false) {
++          NXPLOG_TML_D("_i2c_read() [hdr] received");
++          phNxpNciHal_print_packet("RECV", pBuffer, NORMAL_MODE_HEADER_LEN);
++        }
++        SemPost();
++        NXPLOG_TML_E("%s [pyld] errno : %x", __func__, errno);
++        return -1;
++      }
++    } else {
++      NXPLOG_TML_E("%s _>>>>> Empty packet recieved !!", __func__);
++    }
++  }
++  SemPost();
++  return numRead;
++}
++
++/*******************************************************************************
++**
++** Function         Write
++**
++** Description      Writes requested number of bytes from given buffer into
++**                  NFCC device
++**
++** Parameters       pDevHandle       - valid device handle
++**                  pBuffer          - buffer for read data
++**                  nNbBytesToWrite  - number of bytes requested to be written
++**
++** Returns          numWrote   - number of successfully written bytes
++**                  -1         - write operation failure
++**
++*******************************************************************************/
++int NfccI2cTransport::Write(void *pDevHandle, uint8_t *pBuffer,
++                            int nNbBytesToWrite) {
++  int ret;
++  int numWrote = 0;
++  int numBytes = nNbBytesToWrite;
++  if (NULL == pDevHandle) {
++    return -1;
++  }
++  if (fragmentation_enabled == I2C_FRAGMENATATION_DISABLED &&
++      nNbBytesToWrite > FRAGMENTSIZE_MAX) {
++    NXPLOG_TML_D(
++        "%s data larger than maximum I2C  size,enable I2C fragmentation",
++        __func__);
++    return -1;
++  }
++  while (numWrote < nNbBytesToWrite) {
++    if (fragmentation_enabled == I2C_FRAGMENTATION_ENABLED &&
++        nNbBytesToWrite > FRAGMENTSIZE_MAX) {
++      if (nNbBytesToWrite - numWrote > FRAGMENTSIZE_MAX) {
++        numBytes = numWrote + FRAGMENTSIZE_MAX;
++      } else {
++        numBytes = nNbBytesToWrite;
++      }
++    }
++    SemTimedWait();
++    ret = write((intptr_t)pDevHandle, pBuffer + numWrote, numBytes - numWrote);
++    SemPost();
++    if (ret > 0) {
++      numWrote += ret;
++      if (fragmentation_enabled == I2C_FRAGMENTATION_ENABLED &&
++          numWrote < nNbBytesToWrite) {
++        usleep(500);
++      }
++    } else if (ret == 0) {
++      NXPLOG_TML_D("%s EOF", __func__);
++      return -1;
++    } else {
++      NXPLOG_TML_D("%s errno : %x", __func__, errno);
++      if (errno == EINTR || errno == EAGAIN) {
++        continue;
++      }
++      return -1;
++    }
++  }
++
++  return numWrote;
++}
++
++/*******************************************************************************
++**
++** Function         Reset
++**
++** Description      Reset NFCC device, using VEN pin
++**
++** Parameters       pDevHandle     - valid device handle
++**                  eType          - reset level
++**
++** Returns           0   - reset operation success
++**                  -1   - reset operation failure
++**
++*******************************************************************************/
++int NfccI2cTransport::NfccReset(void *pDevHandle, NfccResetType eType) {
++  int ret = -1;
++  NXPLOG_TML_D("%s, VEN eType %ld", __func__, eType);
++
++  if (NULL == pDevHandle) {
++    return -1;
++  }
++
++  ret = ioctl((intptr_t)pDevHandle, NFC_SET_PWR, eType);
++  if (ret < 0) {
++    NXPLOG_TML_E("%s :failed errno = 0x%x", __func__, errno);
++  }
++  if ((eType != MODE_FW_DWNLD_WITH_VEN && eType != MODE_FW_DWND_HIGH) &&
++      ret == 0) {
++    EnableFwDnldMode(false);
++  }
++  if ((((eType == MODE_FW_DWNLD_WITH_VEN) || (eType == MODE_FW_DWND_HIGH)) && (ret == 0))) {
++    EnableFwDnldMode(true);
++  }
++
++  return ret;
++}
++
++/*******************************************************************************
++**
++** Function         EseReset
++**
++** Description      Request NFCC to reset the eSE
++**
++** Parameters       pDevHandle     - valid device handle
++**                  eType          - EseResetType
++**
++** Returns           0   - reset operation success
++**                  else - reset operation failure
++**
++*******************************************************************************/
++int NfccI2cTransport::EseReset(void *pDevHandle, EseResetType eType) {
++  int ret = -1;
++  NXPLOG_TML_D("%s, eType %ld", __func__, eType);
++
++  if (NULL == pDevHandle) {
++    return -1;
++  }
++  ret = ioctl((intptr_t)pDevHandle, ESE_SET_PWR, eType);
++  if (ret < 0) {
++    NXPLOG_TML_E("%s :failed errno = 0x%x", __func__, errno);
++  }
++  return ret;
++}
++
++/*******************************************************************************
++**
++** Function         EseGetPower
++**
++** Description      Request NFCC to reset the eSE
++**
++** Parameters       pDevHandle     - valid device handle
++**                  level          - reset level
++**
++** Returns           0   - reset operation success
++**                  else - reset operation failure
++**
++*******************************************************************************/
++int NfccI2cTransport::EseGetPower(void *pDevHandle, long level) {
++  return ioctl((intptr_t)pDevHandle, ESE_GET_PWR, level);
++}
++
++/*******************************************************************************
++**
++** Function         GetPlatform
++**
++** Description      Get platform interface type (i2c or i3c) for common mw
++**
++** Parameters       pDevHandle     - valid device handle
++**
++** Returns           0   - i2c
++**                   1   - i3c
++**
++*******************************************************************************/
++int NfccI2cTransport::GetPlatform(void *pDevHandle) {
++  int ret = -1;
++  NXPLOG_TML_D("%s ", __func__);
++  if (NULL == pDevHandle) {
++    return -1;
++  }
++  ret = ioctl((intptr_t)pDevHandle, NFC_GET_PLATFORM_TYPE);
++  NXPLOG_TML_D("%s :platform = %d", __func__, ret);
++  return ret;
++}
++
++/*******************************************************************************
++**
++** Function         GetNfcState
++**
++** Description      Get NFC state
++**
++** Parameters       pDevHandle     - valid device handle
++** Returns           0   - unknown
++**                   1   - FW DWL
++**                   2 	 - NCI
++**
++*******************************************************************************/
++int NfccI2cTransport::GetNfcState(void *pDevHandle) {
++  int ret = NFC_STATE_UNKNOWN;
++  NXPLOG_TML_D("%s ", __func__);
++  if (NULL == pDevHandle) {
++    return ret;
++  }
++  ret = ioctl((intptr_t)pDevHandle, NFC_GET_NFC_STATE);
++  NXPLOG_TML_D("%s :nfc state = %d", __func__, ret);
++  return ret;
++}
++/*******************************************************************************
++**
++** Function         EnableFwDnldMode
++**
++** Description      updates the state to Download mode
++**
++** Parameters       True/False
++**
++** Returns          None
++*******************************************************************************/
++void NfccI2cTransport::EnableFwDnldMode(bool mode) { bFwDnldFlag = mode; }
++
++/*******************************************************************************
++**
++** Function         IsFwDnldModeEnabled
++**
++** Description      Returns the current mode
++**
++** Parameters       none
++**
++** Returns           Current mode download/NCI
++*******************************************************************************/
++bool_t NfccI2cTransport::IsFwDnldModeEnabled(void) { return bFwDnldFlag; }
++
++/*******************************************************************************
++**
++** Function         SemPost
++**
++** Description      sem_post 2c_read / write
++**
++** Parameters       none
++**
++** Returns          none
++*******************************************************************************/
++void NfccI2cTransport::SemPost() {
++  int sem_val = 0;
++  sem_getvalue(&mTxRxSemaphore, &sem_val);
++  if (sem_val == 0) {
++    sem_post(&mTxRxSemaphore);
++  }
++}
++
++/*******************************************************************************
++**
++** Function         SemTimedWait
++**
++** Description      Timed sem_wait for avoiding i2c_read & write overlap
++**
++** Parameters       none
++**
++** Returns          Sem_wait return status
++*******************************************************************************/
++int NfccI2cTransport::SemTimedWait() {
++  NFCSTATUS status = NFCSTATUS_FAILED;
++  long sem_timedout = 500 * 1000 * 1000;
++  int s = 0;
++  struct timespec ts;
++  clock_gettime(CLOCK_REALTIME, &ts);
++  ts.tv_sec += 0;
++  ts.tv_nsec += sem_timedout;
++  while ((s = sem_timedwait(&mTxRxSemaphore, &ts)) == -1 && errno == EINTR) {
++    continue; /* Restart if interrupted by handler */
++  }
++  if (s != -1) {
++    status = NFCSTATUS_SUCCESS;
++  } else if (errno == ETIMEDOUT && s == -1) {
++    NXPLOG_TML_E("%s :timed out errno = 0x%x", __func__, errno);
++  }
++  return status;
++}
++
++/*******************************************************************************
++**
++** Function         GetIrqState
++**
++** Description      Get state of IRQ GPIO
++**
++** Parameters       pDevHandle - valid device handle
++**
++** Returns          The state of IRQ line i.e. +ve if read is pending else Zer0.
++**                  In the case of IOCTL error, it returns -ve value.
++**
++*******************************************************************************/
++int NfccI2cTransport::GetIrqState(void *pDevHandle) {
++  int ret = -1;
++
++  NXPLOG_TML_D("%s Enter",__func__);
++  if (NULL != pDevHandle) {
++    ret = ioctl((intptr_t)pDevHandle, NFC_GET_IRQ_STATE);
++  }
++  NXPLOG_TML_D("%s exit: state = %d", __func__, ret);
++  return ret;
++}
+diff --git a/halimpl/tml/transport/NfccI2cTransport.h b/halimpl/tml/transport/NfccI2cTransport.h
+new file mode 100644
+index 0000000..ae684b8
+--- /dev/null
++++ b/halimpl/tml/transport/NfccI2cTransport.h
+@@ -0,0 +1,266 @@
++/******************************************************************************
++ *
++ *  Copyright 2020-2021 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
++#pragma once
++#include <NfccTransport.h>
++
++#define NFC_MAGIC 0xE9
++/*
++ * NFCC power control via ioctl
++ * NFC_SET_PWR(0): power off
++ * NFC_SET_PWR(1): power on
++ * NFC_SET_PWR(2): reset and power on with firmware download enabled
++ */
++#define NFC_SET_PWR _IOW(NFC_MAGIC, 0x01, long)
++/*
++ * 1. SPI Request NFCC to enable ESE power, only in param
++ *   Only for SPI
++ *   level 1 = Enable power
++ *   level 0 = Disable power
++ * 2. NFC Request the eSE cold reset, only with MODE_ESE_COLD_RESET
++ */
++#define ESE_SET_PWR _IOW(NFC_MAGIC, 0x02, long)
++
++/*
++ * SPI or DWP can call this ioctl to get the current
++ * power state of ESE
++ */
++#define ESE_GET_PWR _IOR(NFC_MAGIC, 0x03, long)
++
++/*
++ * get platform interface type(i2c or i3c) for common MW
++ * return 0 - i2c, 1 - i3c
++ */
++#define NFC_GET_PLATFORM_TYPE _IO(NFC_MAGIC, 0x04)
++/*
++ * get boot state
++ * return unknown, fw dwl, fw teared, nci
++ */
++#define NFC_GET_NFC_STATE _IO(NFC_MAGIC, 0x05)
++
++/* NFC HAL can call this ioctl to get the current IRQ state */
++#define NFC_GET_IRQ_STATE _IO(NFC_MAGIC, 0x06)
++
++extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
++
++class NfccI2cTransport : public NfccTransport {
++ private:
++  bool_t bFwDnldFlag = false;
++  sem_t mTxRxSemaphore;
++  /*****************************************************************************
++   **
++   ** Function         SemTimedWait
++   **
++   ** Description      Timed sem_wait for avoiding i2c_read & write overlap
++   **
++   ** Parameters       none
++   **
++   ** Returns          Sem_wait return status
++   ****************************************************************************/
++  int SemTimedWait();
++
++  /*****************************************************************************
++   **
++   ** Function         SemPost
++   **
++   ** Description      sem_post 2c_read / write
++   **
++   ** Parameters       none
++   **
++   ** Returns          none
++   ****************************************************************************/
++  void SemPost();
++
++  int Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead);
++
++ public:
++  /*****************************************************************************
++  **
++  ** Function         Close
++  **
++  ** Description      Closes NFCC device
++  **
++  ** Parameters       pDevHandle - device handle
++  **
++  ** Returns          None
++  **
++  *****************************************************************************/
++  void Close(void *pDevHandle);
++
++  /*****************************************************************************
++   **
++   ** Function         OpenAndConfigure
++   **
++   ** Description      Open and configure NFCC device
++   **
++   ** Parameters       pConfig     - hardware information
++   **                  pLinkHandle - device handle
++   **
++   ** Returns          NFC status:
++   **                  NFCSTATUS_SUCCESS - open_and_configure operation success
++   **                  NFCSTATUS_INVALID_DEVICE - device open operation failure
++   **
++   ****************************************************************************/
++  NFCSTATUS OpenAndConfigure(pphTmlNfc_Config_t pConfig, void **pLinkHandle);
++
++  /*****************************************************************************
++   **
++   ** Function         Read
++   **
++   ** Description      Reads requested number of bytes from NFCC device into
++   *given
++   **                  buffer
++   **
++   ** Parameters       pDevHandle       - valid device handle
++   **                  pBuffer          - buffer for read data
++   **                  nNbBytesToRead   - number of bytes requested to be read
++   **
++   ** Returns          numRead   - number of successfully read bytes
++   **                  -1        - read operation failure
++   **
++   ****************************************************************************/
++  int Read(void *pDevHandle, uint8_t *pBuffer, int nNbBytesToRead);
++
++  /*****************************************************************************
++  **
++  ** Function         Write
++  **
++  ** Description      Writes requested number of bytes from given buffer into
++  **                  NFCC device
++  **
++  ** Parameters       pDevHandle       - valid device handle
++  **                  pBuffer          - buffer for read data
++  **                  nNbBytesToWrite  - number of bytes requested to be written
++  **
++  ** Returns          numWrote   - number of successfully written bytes
++  **                  -1         - write operation failure
++  **
++  *****************************************************************************/
++  int Write(void *pDevHandle, uint8_t *pBuffer, int nNbBytesToWrite);
++
++  /*****************************************************************************
++   **
++   ** Function         Reset
++   **
++   ** Description      Reset NFCC device, using VEN pin
++   **
++   ** Parameters       pDevHandle     - valid device handle
++   **                  level          - reset level
++   **
++   ** Returns           0   - reset operation success
++   **                  -1   - reset operation failure
++   **
++   ****************************************************************************/
++  int NfccReset(void *pDevHandle, NfccResetType eType);
++
++  /*****************************************************************************
++   **
++   ** Function         EseReset
++   **
++   ** Description      Request NFCC to reset the eSE
++   **
++   ** Parameters       pDevHandle     - valid device handle
++   **                  eType          - EseResetType
++   **
++   ** Returns           0   - reset operation success
++   **                  else - reset operation failure
++   **
++   ****************************************************************************/
++  int EseReset(void *pDevHandle, EseResetType eType);
++
++  /*****************************************************************************
++   **
++   ** Function         EseGetPower
++   **
++   ** Description      Request NFCC to reset the eSE
++   **
++   ** Parameters       pDevHandle     - valid device handle
++   **                  level          - reset level
++   **
++   ** Returns           0   - reset operation success
++   **                  else - reset operation failure
++   **
++   ****************************************************************************/
++  int EseGetPower(void *pDevHandle, long level);
++
++  /*****************************************************************************
++   **
++   ** Function         GetPlatform
++   **
++   ** Description      Get platform interface type (i2c or i3c) for common mw
++   **
++   ** Parameters       pDevHandle     - valid device handle
++   **
++   ** Returns           0   - i2c
++   **                   1   - i3c
++   **
++   ****************************************************************************/
++  int GetPlatform(void *pDevHandle);
++
++  /*****************************************************************************
++  **
++  ** Function         GetNfcState
++  **
++  ** Description      Get Nfc state
++  **
++  ** Parameters       pDevHandle     - valid device handle
++  ** Returns           0   - unknown
++  **                   1   - FW DWL
++  **                   2   - NCI
++  **
++  *****************************************************************************/
++  int GetNfcState(void *pDevHandle);
++
++  /*****************************************************************************
++   **
++   ** Function         EnableFwDnldMode
++   **
++   ** Description      updates the state to Download mode
++   **
++   ** Parameters       True/False
++   **
++   ** Returns          None
++   ****************************************************************************/
++  void EnableFwDnldMode(bool mode);
++
++  /*****************************************************************************
++   **
++   ** Function         IsFwDnldModeEnabled
++   **
++   ** Description      Returns the current mode
++   **
++   ** Parameters       none
++   **
++   ** Returns           Current mode download/NCI
++   ****************************************************************************/
++  bool_t IsFwDnldModeEnabled(void);
++
++  /*******************************************************************************
++   **
++   ** Function         GetIrqState
++   **
++   ** Description      Get state of IRQ GPIO
++   **
++   ** Parameters       pDevHandle - valid device handle
++   **
++   ** Returns          The state of IRQ line i.e. +ve if read is pending else Zer0.
++   **                  In the case of IOCTL error, it returns -ve value.
++   **
++   *******************************************************************************/
++  int GetIrqState(void *pDevHandle);
++};
+diff --git a/halimpl/tml/transport/NfccSpiTransport.cc b/halimpl/tml/transport/NfccSpiTransport.cc
+new file mode 100644
+index 0000000..82cf97f
+--- /dev/null
++++ b/halimpl/tml/transport/NfccSpiTransport.cc
+@@ -0,0 +1,533 @@
++/******************************************************************************
++ *  Copyright 2020-2021 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
++#include <errno.h>
++#include <fcntl.h>
++#include <hardware/nfc.h>
++#include <stdlib.h>
++#include <sys/ioctl.h>
++#include <sys/select.h>
++#include <termios.h>
++#include <unistd.h>
++
++#include "phNxpNciHal_utils.h"
++#include <NfccSpiTransport.h>
++#include <phNfcStatus.h>
++#include <phNxpLog.h>
++#include <string.h>
++
++#define CRC_LEN 2
++#define NORMAL_MODE_HEADER_LEN 3
++#define FW_DNLD_HEADER_LEN 2
++#define FW_DNLD_LEN_OFFSET 1
++#define NORMAL_MODE_LEN_OFFSET 2
++#define FRAGMENTSIZE_MAX PHNFC_I2C_FRAGMENT_SIZE
++extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
++extern phTmlNfc_Context_t *gpphTmlNfc_Context;
++/*******************************************************************************
++**
++** Function         Close
++**
++** Description      Closes NFCC device
++**
++** Parameters       pDevHandle - device handle
++**
++** Returns          None
++**
++*******************************************************************************/
++void NfccSpiTransport::Close(void *pDevHandle) {
++  if (NULL != pDevHandle) {
++    close((intptr_t)pDevHandle);
++  }
++  sem_destroy(&mTxRxSemaphore);
++  return;
++}
++
++/*******************************************************************************
++**
++** Function         OpenAndConfigure
++**
++** Description      Open and configure NFCC device
++**
++** Parameters       pConfig     - hardware information
++**                  pLinkHandle - device handle
++**
++** Returns          NFC status:
++**                  NFCSTATUS_SUCCESS - open_and_configure operation success
++**                  NFCSTATUS_INVALID_DEVICE - device open operation failure
++**
++*******************************************************************************/
++NFCSTATUS NfccSpiTransport::OpenAndConfigure(pphTmlNfc_Config_t pConfig,
++                                             void **pLinkHandle) {
++  int nHandle;
++
++  NXPLOG_TML_D("%s Opening port=%s\n", __func__, pConfig->pDevName);
++  /* open port */
++  nHandle = open((const char *)pConfig->pDevName, O_RDWR);
++  if (nHandle < 0) {
++    NXPLOG_TML_E("_i2c_open() Failed: retval %x", nHandle);
++    *pLinkHandle = NULL;
++    return NFCSTATUS_INVALID_DEVICE;
++  }
++
++  *pLinkHandle = (void *)((intptr_t)nHandle);
++  if (0 != sem_init(&mTxRxSemaphore, 0, 1)) {
++    NXPLOG_TML_E("%s Failed: reason sem_init : retval %x", __func__, nHandle);
++  }
++  /*Reset PN54X*/
++  NfccReset((void *)((intptr_t)nHandle), MODE_POWER_OFF);
++  usleep(10 * 1000);
++  NfccReset((void *)((intptr_t)nHandle), MODE_POWER_ON);
++
++  return NFCSTATUS_SUCCESS;
++}
++
++/*******************************************************************************
++**
++** Function         Flushdata
++**
++** Description      Reads payload of FW rsp from NFCC device into given buffer
++**
++** Parameters       pDevHandle - valid device handle
++**                  pBuffer    - buffer for read data
++**                  numRead    - number of bytes read by calling function
++**
++** Returns          always returns -1
++**
++*******************************************************************************/
++int NfccSpiTransport::Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead) {
++  int retRead = 0;
++  uint16_t totalBtyesToRead = pBuffer[FW_DNLD_LEN_OFFSET] + FW_DNLD_HEADER_LEN + CRC_LEN;
++  /* we shall read totalBtyesToRead-1 as one byte is already read by calling function*/
++  retRead = read((intptr_t)pDevHandle, pBuffer + numRead, totalBtyesToRead - 1);
++  if (retRead > 0) {
++    numRead += retRead;
++    phNxpNciHal_print_packet("RECV", pBuffer, numRead);
++  } else if (retRead == 0) {
++    NXPLOG_TML_E("%s _i2c_read() [pyld] EOF", __func__);
++  } else {
++    if (bFwDnldFlag == false) {
++      NXPLOG_TML_D("%s _i2c_read() [hdr] received", __func__);
++      phNxpNciHal_print_packet("RECV", pBuffer - numRead, NORMAL_MODE_HEADER_LEN);
++    }
++    NXPLOG_TML_E("%s _i2c_read() [pyld] errno : %x", __func__, errno);
++  }
++  SemPost();
++  return -1;
++}
++
++/*******************************************************************************
++**
++** Function         Read
++**
++** Description      Reads requested number of bytes from NFCC device into given
++**                  buffer
++**
++** Parameters       pDevHandle       - valid device handle
++**                  pBuffer          - buffer for read data
++**                  nNbBytesToRead   - number of bytes requested to be read
++**
++** Returns          numRead   - number of successfully read bytes
++**                  -1        - read operation failure
++**
++*******************************************************************************/
++int NfccSpiTransport::Read(void *pDevHandle, uint8_t *pBuffer,
++                           int nNbBytesToRead) {
++  int ret_Read;
++  int ret_Select;
++  int numRead = 0;
++  struct timeval tv;
++  fd_set rfds;
++  uint16_t totalBtyesToRead = 0;
++
++  UNUSED(nNbBytesToRead);
++  if (NULL == pDevHandle) {
++    return -1;
++  }
++
++  if (bFwDnldFlag == false) {
++    totalBtyesToRead = NORMAL_MODE_HEADER_LEN;
++  } else {
++    totalBtyesToRead = FW_DNLD_HEADER_LEN;
++  }
++
++  /* Read with 2 second timeout, so that the read thread can be aborted
++     when the NFCC does not respond and we need to switch to FW download
++     mode. This should be done via a control socket instead. */
++  FD_ZERO(&rfds);
++  FD_SET((intptr_t)pDevHandle, &rfds);
++  tv.tv_sec = 2;
++  tv.tv_usec = 1;
++
++  ret_Select =
++      select((int)((intptr_t)pDevHandle + (int)1), &rfds, NULL, NULL, &tv);
++  if (ret_Select < 0) {
++    NXPLOG_TML_D("%s errno : %x", __func__, errno);
++    return -1;
++  } else if (ret_Select == 0) {
++    NXPLOG_TML_D("%s Timeout", __func__);
++    return -1;
++  } else {
++    ret_Read = read((intptr_t)pDevHandle, pBuffer, totalBtyesToRead - numRead);
++    if (ret_Read > 0 && !(pBuffer[0] == 0xFF && pBuffer[1] == 0xFF)) {
++      SemTimedWait();
++      numRead += ret_Read;
++    } else if (ret_Read == 0) {
++      NXPLOG_TML_E("%s [hdr]EOF", __func__);
++      return -1;
++    } else {
++      NXPLOG_TML_E("%s [hdr] errno : %x", __func__, errno);
++      NXPLOG_TML_E(" %s pBuffer[0] = %x pBuffer[1]= %x", __func__, pBuffer[0],
++                   pBuffer[1]);
++      return -1;
++    }
++
++    if (bFwDnldFlag == false) {
++      totalBtyesToRead = NORMAL_MODE_HEADER_LEN;
++#if(NXP_EXTNS == TRUE)
++      if (gpphTmlNfc_Context->tReadInfo.pContext != NULL &&
++              !memcmp(gpphTmlNfc_Context->tReadInfo.pContext, "MinOpen", 0x07) &&
++              !pBuffer[0] && pBuffer[1]) {
++        return Flushdata(pDevHandle, pBuffer, numRead);
++      }
++#endif
++    } else {
++      totalBtyesToRead = FW_DNLD_HEADER_LEN;
++    }
++
++    if (numRead < totalBtyesToRead) {
++      ret_Read = read((intptr_t)pDevHandle, (pBuffer + numRead), totalBtyesToRead - numRead);
++
++      if (ret_Read != totalBtyesToRead - numRead) {
++        SemPost();
++        NXPLOG_TML_E("%s [hdr] errno : %x", __func__, errno);
++        return -1;
++      } else {
++        numRead += ret_Read;
++      }
++    }
++    if (bFwDnldFlag == true) {
++      totalBtyesToRead = pBuffer[FW_DNLD_LEN_OFFSET] + FW_DNLD_HEADER_LEN + CRC_LEN;
++    } else {
++      totalBtyesToRead = pBuffer[NORMAL_MODE_LEN_OFFSET] + NORMAL_MODE_HEADER_LEN;
++    }
++    if ((totalBtyesToRead - numRead) != 0) {
++      ret_Read = read((intptr_t)pDevHandle, (pBuffer + numRead), totalBtyesToRead - numRead);
++      if (ret_Read > 0) {
++        numRead += ret_Read;
++      } else if (ret_Read == 0) {
++        SemPost();
++        NXPLOG_TML_E("%s [pyld] EOF", __func__);
++        return -1;
++      } else {
++        if (bFwDnldFlag == false) {
++          NXPLOG_TML_D("_i2c_read() [hdr] received");
++          phNxpNciHal_print_packet("RECV", pBuffer, NORMAL_MODE_HEADER_LEN);
++        }
++        SemPost();
++        NXPLOG_TML_E("%s [pyld] errno : %x", __func__, errno);
++        return -1;
++      }
++    } else {
++      NXPLOG_TML_E("%s _>>>>> Empty packet recieved !!", __func__);
++    }
++  }
++  SemPost();
++  return numRead;
++}
++
++/*******************************************************************************
++**
++** Function         Write
++**
++** Description      Writes requested number of bytes from given buffer into
++**                  NFCC device
++**
++** Parameters       pDevHandle       - valid device handle
++**                  pBuffer          - buffer for read data
++**                  nNbBytesToWrite  - number of bytes requested to be written
++**
++** Returns          numWrote   - number of successfully written bytes
++**                  -1         - write operation failure
++**
++*******************************************************************************/
++int NfccSpiTransport::Write(void *pDevHandle, uint8_t *pBuffer,
++                            int nNbBytesToWrite) {
++  int ret;
++  int numWrote = 0;
++  int numBytes = nNbBytesToWrite;
++  if (NULL == pDevHandle) {
++    return -1;
++  }
++  if (fragmentation_enabled == I2C_FRAGMENATATION_DISABLED &&
++      nNbBytesToWrite > FRAGMENTSIZE_MAX) {
++    NXPLOG_TML_D(
++        "%s data larger than maximum I2C  size,enable I2C fragmentation",
++        __func__);
++    return -1;
++  }
++  while (numWrote < nNbBytesToWrite) {
++    if (fragmentation_enabled == I2C_FRAGMENTATION_ENABLED &&
++        nNbBytesToWrite > FRAGMENTSIZE_MAX) {
++      if (nNbBytesToWrite - numWrote > FRAGMENTSIZE_MAX) {
++        numBytes = numWrote + FRAGMENTSIZE_MAX;
++      } else {
++        numBytes = nNbBytesToWrite;
++      }
++    }
++    SemTimedWait();
++    ret = write((intptr_t)pDevHandle, pBuffer + numWrote, numBytes - numWrote);
++    SemPost();
++    if (ret > 0) {
++      numWrote += ret;
++      if (fragmentation_enabled == I2C_FRAGMENTATION_ENABLED &&
++          numWrote < nNbBytesToWrite) {
++        usleep(500);
++      }
++    } else if (ret == 0) {
++      NXPLOG_TML_D("%s EOF", __func__);
++      return -1;
++    } else {
++      NXPLOG_TML_D("%s errno : %x", __func__, errno);
++      if (errno == EINTR || errno == EAGAIN) {
++        continue;
++      }
++      return -1;
++    }
++  }
++
++  return numWrote;
++}
++
++/*******************************************************************************
++**
++** Function         NfccReset
++**
++** Description      Reset NFCC device, using VEN pin
++**
++** Parameters       pDevHandle     - valid device handle
++**                  eType          - reset level
++**
++** Returns           0   - reset operation success
++**                  -1   - reset operation failure
++**
++*******************************************************************************/
++int NfccSpiTransport::NfccReset(void *pDevHandle, NfccResetType eType) {
++  int ret = -1;
++  NXPLOG_TML_D("%s, VEN eType %ld", __func__, eType);
++
++  if (NULL == pDevHandle) {
++    return -1;
++  }
++
++  ret = ioctl((intptr_t)pDevHandle, NFC_SET_PWR, eType);
++  if (ret < 0) {
++    NXPLOG_TML_E("%s :failed errno = 0x%x", __func__, errno);
++  }
++  if ((eType != MODE_FW_DWNLD_WITH_VEN && eType != MODE_FW_DWND_HIGH) &&
++      ret == 0) {
++    EnableFwDnldMode(false);
++  }
++  if ((((eType == MODE_FW_DWNLD_WITH_VEN) || (eType == MODE_FW_DWND_HIGH)) && (ret == 0))) {
++    EnableFwDnldMode(true);
++  }
++
++  return ret;
++}
++
++/*******************************************************************************
++**
++** Function         EseReset
++**
++** Description      Request NFCC to reset the eSE
++**
++** Parameters       pDevHandle     - valid device handle
++**                  eType          - EseResetType
++**
++** Returns           0   - reset operation success
++**                  else - reset operation failure
++**
++*******************************************************************************/
++int NfccSpiTransport::EseReset(void *pDevHandle, EseResetType eType) {
++  int ret = -1;
++  NXPLOG_TML_D("%s, eType %ld", __func__, eType);
++
++  if (NULL == pDevHandle) {
++    return -1;
++  }
++  ret = ioctl((intptr_t)pDevHandle, ESE_SET_PWR, eType);
++  if (ret < 0) {
++    NXPLOG_TML_E("%s :failed errno = 0x%x", __func__, errno);
++  }
++  return ret;
++}
++
++/*******************************************************************************
++**
++** Function         EseGetPower
++**
++** Description      Request NFCC to reset the eSE
++**
++** Parameters       pDevHandle     - valid device handle
++**                  level          - reset level
++**
++** Returns           0   - reset operation success
++**                  else - reset operation failure
++**
++*******************************************************************************/
++int NfccSpiTransport::EseGetPower(void *pDevHandle, long level) {
++  return ioctl((intptr_t)pDevHandle, ESE_GET_PWR, level);
++}
++
++/*******************************************************************************
++**
++** Function         GetPlatform
++**
++** Description      Get platform interface type (i2c or i3c) for common mw
++**
++** Parameters       pDevHandle     - valid device handle
++**
++** Returns           0   - i2c
++**                   1   - i3c
++**
++*******************************************************************************/
++int NfccSpiTransport::GetPlatform(void *pDevHandle) {
++  int ret = -1;
++  NXPLOG_TML_D("%s ", __func__);
++  if (NULL == pDevHandle) {
++    return -1;
++  }
++  ret = ioctl((intptr_t)pDevHandle, NFC_GET_PLATFORM_TYPE);
++  NXPLOG_TML_D("%s :platform = %d", __func__, ret);
++  return ret;
++}
++
++/*******************************************************************************
++**
++** Function         GetNfcState
++**
++** Description      Get NFC state
++**
++** Parameters       pDevHandle     - valid device handle
++** Returns           0   - unknown
++**                   1   - FW DWL
++**                   2 	 - NCI
++**
++*******************************************************************************/
++int NfccSpiTransport::GetNfcState(void *pDevHandle) {
++  int ret = NFC_STATE_UNKNOWN;
++  NXPLOG_TML_D("%s ", __func__);
++  if (NULL == pDevHandle) {
++    return ret;
++  }
++  ret = ioctl((intptr_t)pDevHandle, NFC_GET_NFC_STATE);
++  NXPLOG_TML_D("%s :nfc state = %d", __func__, ret);
++  return ret;
++}
++/*******************************************************************************
++**
++** Function         EnableFwDnldMode
++**
++** Description      updates the state to Download mode
++**
++** Parameters       True/False
++**
++** Returns          None
++*******************************************************************************/
++void NfccSpiTransport::EnableFwDnldMode(bool mode) { bFwDnldFlag = mode; }
++
++/*******************************************************************************
++**
++** Function         IsFwDnldModeEnabled
++**
++** Description      Returns the current mode
++**
++** Parameters       none
++**
++** Returns           Current mode download/NCI
++*******************************************************************************/
++bool_t NfccSpiTransport::IsFwDnldModeEnabled(void) { return bFwDnldFlag; }
++
++/*******************************************************************************
++**
++** Function         SemPost
++**
++** Description      sem_post 2c_read / write
++**
++** Parameters       none
++**
++** Returns          none
++*******************************************************************************/
++void NfccSpiTransport::SemPost() {
++  int sem_val = 0;
++  sem_getvalue(&mTxRxSemaphore, &sem_val);
++  if (sem_val == 0) {
++    sem_post(&mTxRxSemaphore);
++  }
++}
++
++/*******************************************************************************
++**
++** Function         SemTimedWait
++**
++** Description      Timed sem_wait for avoiding i2c_read & write overlap
++**
++** Parameters       none
++**
++** Returns          Sem_wait return status
++*******************************************************************************/
++int NfccSpiTransport::SemTimedWait() {
++  NFCSTATUS status = NFCSTATUS_FAILED;
++  long sem_timedout = 500 * 1000 * 1000;
++  int s = 0;
++  struct timespec ts;
++  clock_gettime(CLOCK_REALTIME, &ts);
++  ts.tv_sec += 0;
++  ts.tv_nsec += sem_timedout;
++  while ((s = sem_timedwait(&mTxRxSemaphore, &ts)) == -1 && errno == EINTR) {
++    continue; /* Restart if interrupted by handler */
++  }
++  if (s != -1) {
++    status = NFCSTATUS_SUCCESS;
++  } else if (errno == ETIMEDOUT && s == -1) {
++    NXPLOG_TML_E("%s :timed out errno = 0x%x", __func__, errno);
++  }
++  return status;
++}
++
++/*******************************************************************************
++**
++** Function         GetIrqState
++**
++** Description      Get state of IRQ GPIO
++**
++** Parameters       pDevHandle - valid device handle
++**
++** Returns          The state of IRQ line i.e. +ve if read is pending else Zer0.
++**                  In the case of IOCTL error, it returns -ve value.
++**
++*******************************************************************************/
++int NfccSpiTransport::GetIrqState(void *pDevHandle) {
++  int ret = -1;
++
++  NXPLOG_TML_D("%s Enter",__func__);
++  if (NULL != pDevHandle) {
++    ret = ioctl((intptr_t)pDevHandle, NFC_GET_IRQ_STATE);
++  }
++  NXPLOG_TML_D("%s exit: state = %d", __func__, ret);
++  return ret;
++}
+diff --git a/halimpl/tml/transport/NfccSpiTransport.h b/halimpl/tml/transport/NfccSpiTransport.h
+new file mode 100644
+index 0000000..d46ca18
+--- /dev/null
++++ b/halimpl/tml/transport/NfccSpiTransport.h
+@@ -0,0 +1,266 @@
++/******************************************************************************
++ *
++ *  Copyright 2020-2021 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
++#pragma once
++#include <NfccTransport.h>
++
++#define NFC_MAGIC 0xE9
++/*
++ * NFCC power control via ioctl
++ * NFC_SET_PWR(0): power off
++ * NFC_SET_PWR(1): power on
++ * NFC_SET_PWR(2): reset and power on with firmware download enabled
++ */
++#define NFC_SET_PWR _IOW(NFC_MAGIC, 0x01, long)
++/*
++ * 1. SPI Request NFCC to enable ESE power, only in param
++ *   Only for SPI
++ *   level 1 = Enable power
++ *   level 0 = Disable power
++ * 2. NFC Request the eSE cold reset, only with MODE_ESE_COLD_RESET
++ */
++#define ESE_SET_PWR _IOW(NFC_MAGIC, 0x02, long)
++
++/*
++ * SPI or DWP can call this ioctl to get the current
++ * power state of ESE
++ */
++#define ESE_GET_PWR _IOR(NFC_MAGIC, 0x03, long)
++
++/*
++ * get platform interface type(i2c or i3c) for common MW
++ * return 0 - i2c, 1 - i3c
++ */
++#define NFC_GET_PLATFORM_TYPE _IO(NFC_MAGIC, 0x04)
++/*
++ * get boot state
++ * return unknown, fw dwl, fw teared, nci
++ */
++#define NFC_GET_NFC_STATE _IO(NFC_MAGIC, 0x05)
++
++/* NFC HAL can call this ioctl to get the current IRQ state */
++#define NFC_GET_IRQ_STATE _IO(NFC_MAGIC, 0x06)
++
++extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
++
++class NfccSpiTransport : public NfccTransport {
++ private:
++  bool_t bFwDnldFlag = false;
++  sem_t mTxRxSemaphore;
++  /*****************************************************************************
++   **
++   ** Function         SemTimedWait
++   **
++   ** Description      Timed sem_wait for avoiding i2c_read & write overlap
++   **
++   ** Parameters       none
++   **
++   ** Returns          Sem_wait return status
++   ****************************************************************************/
++  int SemTimedWait();
++
++  /*****************************************************************************
++   **
++   ** Function         SemPost
++   **
++   ** Description      sem_post 2c_read / write
++   **
++   ** Parameters       none
++   **
++   ** Returns          none
++   ****************************************************************************/
++  void SemPost();
++
++  int Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead);
++
++ public:
++  /*****************************************************************************
++  **
++  ** Function         Close
++  **
++  ** Description      Closes NFCC device
++  **
++  ** Parameters       pDevHandle - device handle
++  **
++  ** Returns          None
++  **
++  *****************************************************************************/
++  void Close(void *pDevHandle);
++
++  /*****************************************************************************
++   **
++   ** Function         OpenAndConfigure
++   **
++   ** Description      Open and configure NFCC device
++   **
++   ** Parameters       pConfig     - hardware information
++   **                  pLinkHandle - device handle
++   **
++   ** Returns          NFC status:
++   **                  NFCSTATUS_SUCCESS - open_and_configure operation success
++   **                  NFCSTATUS_INVALID_DEVICE - device open operation failure
++   **
++   ****************************************************************************/
++  NFCSTATUS OpenAndConfigure(pphTmlNfc_Config_t pConfig, void **pLinkHandle);
++
++  /*****************************************************************************
++   **
++   ** Function         Read
++   **
++   ** Description      Reads requested number of bytes from NFCC device into
++   *given
++   **                  buffer
++   **
++   ** Parameters       pDevHandle       - valid device handle
++   **                  pBuffer          - buffer for read data
++   **                  nNbBytesToRead   - number of bytes requested to be read
++   **
++   ** Returns          numRead   - number of successfully read bytes
++   **                  -1        - read operation failure
++   **
++   ****************************************************************************/
++  int Read(void *pDevHandle, uint8_t *pBuffer, int nNbBytesToRead);
++
++  /*****************************************************************************
++  **
++  ** Function         Write
++  **
++  ** Description      Writes requested number of bytes from given buffer into
++  **                  NFCC device
++  **
++  ** Parameters       pDevHandle       - valid device handle
++  **                  pBuffer          - buffer for read data
++  **                  nNbBytesToWrite  - number of bytes requested to be written
++  **
++  ** Returns          numWrote   - number of successfully written bytes
++  **                  -1         - write operation failure
++  **
++  *****************************************************************************/
++  int Write(void *pDevHandle, uint8_t *pBuffer, int nNbBytesToWrite);
++
++  /*****************************************************************************
++   **
++   ** Function         NfccReset
++   **
++   ** Description      Reset NFCC device, using VEN pin
++   **
++   ** Parameters       pDevHandle     - valid device handle
++   **                  level          - reset level
++   **
++   ** Returns           0   - reset operation success
++   **                  -1   - reset operation failure
++   **
++   ****************************************************************************/
++  int NfccReset(void *pDevHandle, NfccResetType eType);
++
++  /*****************************************************************************
++   **
++   ** Function         EseReset
++   **
++   ** Description      Request NFCC to reset the eSE
++   **
++   ** Parameters       pDevHandle     - valid device handle
++   **                  eType          - EseResetType
++   **
++   ** Returns           0   - reset operation success
++   **                  else - reset operation failure
++   **
++   ****************************************************************************/
++  int EseReset(void *pDevHandle, EseResetType eType);
++
++  /*****************************************************************************
++   **
++   ** Function         EseGetPower
++   **
++   ** Description      Request NFCC to reset the eSE
++   **
++   ** Parameters       pDevHandle     - valid device handle
++   **                  level          - reset level
++   **
++   ** Returns           0   - reset operation success
++   **                  else - reset operation failure
++   **
++   ****************************************************************************/
++  int EseGetPower(void *pDevHandle, long level);
++
++  /*****************************************************************************
++   **
++   ** Function         GetPlatform
++   **
++   ** Description      Get platform interface type (i2c or i3c) for common mw
++   **
++   ** Parameters       pDevHandle     - valid device handle
++   **
++   ** Returns           0   - i2c
++   **                   1   - i3c
++   **
++   ****************************************************************************/
++  int GetPlatform(void *pDevHandle);
++
++  /*****************************************************************************
++  **
++  ** Function         GetNfcState
++  **
++  ** Description      Get Nfc state
++  **
++  ** Parameters       pDevHandle     - valid device handle
++  ** Returns           0   - unknown
++  **                   1   - FW DWL
++  **                   2   - NCI
++  **
++  *****************************************************************************/
++  int GetNfcState(void *pDevHandle);
++
++  /*****************************************************************************
++   **
++   ** Function         EnableFwDnldMode
++   **
++   ** Description      updates the state to Download mode
++   **
++   ** Parameters       True/False
++   **
++   ** Returns          None
++   ****************************************************************************/
++  void EnableFwDnldMode(bool mode);
++
++  /*****************************************************************************
++   **
++   ** Function         IsFwDnldModeEnabled
++   **
++   ** Description      Returns the current mode
++   **
++   ** Parameters       none
++   **
++   ** Returns           Current mode download/NCI
++   ****************************************************************************/
++  bool_t IsFwDnldModeEnabled(void);
++
++  /*******************************************************************************
++   **
++   ** Function         GetIrqState
++   **
++   ** Description      Get state of IRQ GPIO
++   **
++   ** Parameters       pDevHandle - valid device handle
++   **
++   ** Returns          The state of IRQ line i.e. +ve if read is pending else Zer0.
++   **                  In the case of IOCTL error, it returns -ve value.
++   **
++   *******************************************************************************/
++  int GetIrqState(void *pDevHandle);
++};
+diff --git a/halimpl/tml/transport/NfccTransport.cc b/halimpl/tml/transport/NfccTransport.cc
+new file mode 100644
+index 0000000..4380035
+--- /dev/null
++++ b/halimpl/tml/transport/NfccTransport.cc
+@@ -0,0 +1,50 @@
++/******************************************************************************
++ *
++ *  Copyright 2020-2021 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
++#include <NfccTransport.h>
++
++int NfccTransport::NfccReset(__attribute__((unused)) void *pDevHandle,
++                             __attribute__((unused)) NfccResetType eType) {
++  return NFCSTATUS_SUCCESS;
++}
++
++int NfccTransport::EseReset(__attribute__((unused)) void *pDevHandle,
++                            __attribute__((unused)) EseResetType eType) {
++  return NFCSTATUS_SUCCESS;
++}
++int NfccTransport::EseGetPower(__attribute__((unused)) void *pDevHandle,
++                               __attribute__((unused)) long level) {
++  return NFCSTATUS_SUCCESS;
++}
++
++int NfccTransport::GetPlatform(__attribute__((unused)) void *pDevHandle) {
++  return 0x00;
++}
++
++int NfccTransport::GetNfcState(__attribute__((unused)) void *pDevHandle) {
++  return NFC_STATE_UNKNOWN;
++}
++
++void NfccTransport::EnableFwDnldMode(__attribute__((unused)) bool mode) {
++  return;
++}
++int NfccTransport::GetIrqState(__attribute__((unused)) void *pDevHandle) {
++  return -1;
++}
++
++bool_t NfccTransport::IsFwDnldModeEnabled(void) { return false; }
+diff --git a/halimpl/tml/transport/NfccTransport.h b/halimpl/tml/transport/NfccTransport.h
+new file mode 100644
+index 0000000..2d2f2d3
+--- /dev/null
++++ b/halimpl/tml/transport/NfccTransport.h
+@@ -0,0 +1,246 @@
++/******************************************************************************
++ *
++ *  Copyright 2020-2021 NXP
++ *
++ *  Licensed under the Apache License, Version 2.0 (the "License");
++ *  you may not use this file except in compliance with the License.
++ *  You may obtain a copy of the License at
++ *
++ *  http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ *
++ ******************************************************************************/
++
++#pragma once
++#include <phNfcTypes.h>
++#include <phTmlNfc.h>
++
++enum NfccResetType : long {
++  MODE_POWER_OFF = 0x00,
++  MODE_POWER_ON,
++  MODE_FW_DWNLD_WITH_VEN,
++  MODE_ISO_RST,
++  MODE_FW_DWND_HIGH,
++  MODE_POWER_RESET,
++  MODE_FW_GPIO_LOW
++};
++
++enum EseResetCallSrc : long {
++  SRC_SPI = 0x0,
++  SRC_NFC = 0x10,
++};
++
++enum EseResetType : long {
++  MODE_ESE_POWER_ON = 0,
++  MODE_ESE_POWER_OFF,
++  MODE_ESE_POWER_STATE,
++  /*Request from eSE HAL/Service*/
++  MODE_ESE_COLD_RESET,
++  MODE_ESE_RESET_PROTECTION_ENABLE,
++  MODE_ESE_RESET_PROTECTION_DISABLE,
++  /*Request from NFC HAL/Service*/
++  MODE_ESE_COLD_RESET_NFC = MODE_ESE_COLD_RESET | SRC_NFC,
++  MODE_ESE_RESET_PROTECTION_ENABLE_NFC =
++      MODE_ESE_RESET_PROTECTION_ENABLE | SRC_NFC,
++  MODE_ESE_RESET_PROTECTION_DISABLE_NFC =
++      MODE_ESE_RESET_PROTECTION_DISABLE | SRC_NFC,
++};
++
++extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
++
++class NfccTransport {
++public:
++  /*****************************************************************************
++   **
++   ** Function         Close
++   **
++   ** Description      Closes NFCC device
++   **
++   ** Parameters       pDevHandle - device handle
++   **
++   ** Returns          None
++   **
++   *****************************************************************************/
++  virtual void Close(void *pDevHandle) = 0;
++
++  /*****************************************************************************
++   **
++   ** Function         OpenAndConfigure
++   **
++   ** Description      Open and configure NFCC device and transport layer
++   **
++   ** Parameters       pConfig     - hardware information
++   **                  pLinkHandle - device handle
++   **
++   ** Returns          NFC status:
++   **                  NFCSTATUS_SUCCESS - open_and_configure operation success
++   **                  NFCSTATUS_INVALID_DEVICE - device open operation failure
++   **
++   ****************************************************************************/
++  virtual NFCSTATUS OpenAndConfigure(pphTmlNfc_Config_t pConfig,
++                                     void **pLinkHandle) = 0;
++
++  /*****************************************************************************
++   **
++   ** Function         Read
++   **
++   ** Description      Reads requested number of bytes from NFCC device into
++   **                 given buffer
++   **
++   ** Parameters       pDevHandle       - valid device handle
++   **                  pBuffer          - buffer for read data
++   **                  nNbBytesToRead   - number of bytes requested to be read
++   **
++   ** Returns          numRead   - number of successfully read bytes
++   **                  -1        - read operation failure
++   **
++   ****************************************************************************/
++  virtual int Read(void *pDevHandle, uint8_t *pBuffer, int nNbBytesToRead) = 0;
++
++  /*****************************************************************************
++   **
++   ** Function         Write
++   **
++   ** Description      Writes requested number of bytes from given buffer into
++   **                  NFCC device
++   **
++   ** Parameters       pDevHandle       - valid device handle
++   **                  pBuffer          - buffer for read data
++   **                  nNbBytesToWrite  - number of bytes requested to be
++   *written
++   **
++   ** Returns          numWrote   - number of successfully written bytes
++   **                  -1         - write operation failure
++   **
++   *****************************************************************************/
++  virtual int Write(void *pDevHandle, uint8_t *pBuffer,
++                    int nNbBytesToWrite) = 0;
++
++  /*****************************************************************************
++   **
++   ** Function         Reset
++   **
++   ** Description      Reset NFCC device, using VEN pin
++   **
++   ** Parameters       pDevHandle     - valid device handle
++   **                  eType          - NfccResetType
++   **
++   ** Returns           0   - reset operation success
++   **                  -1   - reset operation failure
++   **
++   ****************************************************************************/
++  virtual int NfccReset(void *pDevHandle, NfccResetType eType);
++
++  /*****************************************************************************
++  **
++  ** Function         GetNfcState
++  **
++  ** Description      Get NFC state
++  **
++  ** Parameters       pDevHandle     - valid device handle
++  ** Returns           0   - unknown
++  **                   1   - FW DWL
++  **                   2   - NCI
++  **
++  *****************************************************************************/
++  virtual int GetNfcState(void *pDevHandle);
++  /*****************************************************************************
++   **
++   ** Function         EseReset
++   **
++   ** Description      Request NFCC to reset the eSE
++   **
++   ** Parameters       pDevHandle     - valid device handle
++   **                  eType          - EseResetType
++   **
++   ** Returns           0   - reset operation success
++   **                  else - reset operation failure
++   **
++   ****************************************************************************/
++  virtual int EseReset(void *pDevHandle, EseResetType eType);
++
++  /*****************************************************************************
++   **
++   ** Function         EseGetPower
++   **
++   ** Description      Request NFCC to reset the eSE
++   **
++   ** Parameters       pDevHandle     - valid device handle
++   **                  level          - reset level
++   **
++   ** Returns           0   - reset operation success
++   **                  else - reset operation failure
++   **
++   ****************************************************************************/
++  virtual int EseGetPower(void *pDevHandle, long level);
++
++  /*****************************************************************************
++   **
++   ** Function         GetPlatform
++   **
++   ** Description      Get platform interface type (i2c or i3c) for common mw
++   **
++   ** Parameters       pDevHandle     - valid device handle
++   **
++   ** Returns           0   - i2c
++   **                   1   - i3c
++   **
++   ****************************************************************************/
++  virtual int GetPlatform(void *pDevHandle);
++
++  /*****************************************************************************
++   **
++   ** Function         EnableFwDnldMode
++   **
++   ** Description      updates the state to Download mode
++   **
++   ** Parameters       True/False
++   **
++   ** Returns          None
++   ****************************************************************************/
++  virtual void EnableFwDnldMode(bool mode);
++
++  /*****************************************************************************
++   **
++   ** Function         IsFwDnldModeEnabled
++   **
++   ** Description      Returns the current mode
++   **
++   ** Parameters       none
++   **
++   ** Returns          Current mode download/NCI
++   ****************************************************************************/
++  virtual bool_t IsFwDnldModeEnabled(void);
++
++  /*******************************************************************************
++   **
++   ** Function         GetIrqState
++   **
++   ** Description      Get state of IRQ GPIO
++   **
++   ** Parameters       pDevHandle - valid device handle
++   **
++   ** Returns          The state of IRQ line i.e. +ve if read is pending else
++   *Zer0.
++   **                  In the case of IOCTL error, it returns -ve value.
++   **
++   *******************************************************************************/
++  virtual int GetIrqState(void *pDevHandle);
++
++  /*****************************************************************************
++   **
++   ** Function         ~NfccTransport
++   **
++   ** Description      TransportLayer destructor
++   **
++   ** Parameters       none
++   **
++   ** Returns          None
++   ****************************************************************************/
++  virtual ~NfccTransport(){};
++};
 diff --git a/intf/nxpnfc/1.0/manifest.xml b/intf/nxpnfc/1.0/manifest.xml
 index ceabdbd..fcb4033 100644
 --- a/intf/nxpnfc/1.0/manifest.xml
@@ -3336,5 +5429,2147 @@ index 3ab9ba5..c3288cd 100644
    abort();
  }
 -- 
-2.34.1
+2.35.1
+
+
+From 0e8db625112d51476f21b3aae8998e81a29aa02e Mon Sep 17 00:00:00 2001
+From: nxf36764 <kumarnarayan.bhat@nxp.com>
+Date: Tue, 2 Nov 2021 20:49:47 +0530
+Subject: [PATCH 2/3] [artf902241][Bring up] Initial NFC bringup
+
+Removing SNXXX related files from Android.bp
+---
+ Android.bp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Android.bp b/Android.bp
+index 2c557a6..d3eb133 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -32,5 +32,5 @@ license {
+ }
+ 
+ subdirs = [
+-    "snxxx","intf","pn8x",
++    "intf","pn8x",
+ ]
+-- 
+2.35.1
+
+
+From a90c6de555b4abd54353e10462b948b483919f4a Mon Sep 17 00:00:00 2001
+From: nxf36764 <kumarnarayan.bhat@nxp.com>
+Date: Thu, 24 Feb 2022 12:45:15 +0530
+Subject: [PATCH 3/3] [artf944911][ANDROID 12]:Removing duplicated halimpl
+ folder inside nfcandroid_nfc_hidlimpl repo for pn7160 platform
+
+---
+ halimpl/tml/NfccTransportFactory.cc       |  79 ----
+ halimpl/tml/NfccTransportFactory.h        |  67 ---
+ halimpl/tml/transport/NfccI2cTransport.cc | 533 ----------------------
+ halimpl/tml/transport/NfccI2cTransport.h  | 266 -----------
+ halimpl/tml/transport/NfccSpiTransport.cc | 533 ----------------------
+ halimpl/tml/transport/NfccSpiTransport.h  | 266 -----------
+ halimpl/tml/transport/NfccTransport.cc    |  50 --
+ halimpl/tml/transport/NfccTransport.h     | 246 ----------
+ 8 files changed, 2040 deletions(-)
+ delete mode 100644 halimpl/tml/NfccTransportFactory.cc
+ delete mode 100644 halimpl/tml/NfccTransportFactory.h
+ delete mode 100644 halimpl/tml/transport/NfccI2cTransport.cc
+ delete mode 100644 halimpl/tml/transport/NfccI2cTransport.h
+ delete mode 100644 halimpl/tml/transport/NfccSpiTransport.cc
+ delete mode 100644 halimpl/tml/transport/NfccSpiTransport.h
+ delete mode 100644 halimpl/tml/transport/NfccTransport.cc
+ delete mode 100644 halimpl/tml/transport/NfccTransport.h
+
+diff --git a/halimpl/tml/NfccTransportFactory.cc b/halimpl/tml/NfccTransportFactory.cc
+deleted file mode 100644
+index b626cf2..0000000
+--- a/halimpl/tml/NfccTransportFactory.cc
++++ /dev/null
+@@ -1,79 +0,0 @@
+-/******************************************************************************
+- *
+- *  Copyright 2020-2021 NXP
+- *
+- *  Licensed under the Apache License, Version 2.0 (the "License");
+- *  you may not use this file except in compliance with the License.
+- *  You may obtain a copy of the License at
+- *
+- *  http://www.apache.org/licenses/LICENSE-2.0
+- *
+- *  Unless required by applicable law or agreed to in writing, software
+- *  distributed under the License is distributed on an "AS IS" BASIS,
+- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- *  See the License for the specific language governing permissions and
+- *  limitations under the License.
+- *
+- ******************************************************************************/
+-
+-#include <NfccI2cTransport.h>
+-#include <NfccSpiTransport.h>
+-#include <NfccTransportFactory.h>
+-#include <phNxpLog.h>
+-
+-/*******************************************************************************
+- **
+- ** Function         NfccTransportFactory
+- **
+- ** Description      Constructor for transportFactory. This will be private to
+- **                  support singleton
+- **
+- ** Parameters       none
+- **
+- ** Returns          none
+- ******************************************************************************/
+-NfccTransportFactory::NfccTransportFactory() {}
+-
+-/*******************************************************************************
+-**
+-** Function         getTransport
+-**
+-** Description      selects and returns transport channel based on the input
+-**                  parameter
+-**
+-** Parameters       Required transport Type
+-**
+-** Returns          Selected transport channel
+-******************************************************************************/
+-NfccTransportFactory &NfccTransportFactory::getInstance() {
+-  static NfccTransportFactory mTransprtFactoryInstance;
+-  return mTransprtFactoryInstance;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         getTransport
+-**
+-** Description      selects and returns transport channel based on the input
+-**                  parameter
+-**
+-** Parameters       Required transport Type
+-**
+-** Returns          Selected transport channel
+-******************************************************************************/
+-spTransport NfccTransportFactory::getTransport(transportIntf transportType) {
+-  NXPLOG_TML_D("%s Requested transportType: %d\n", __func__, transportType);
+-  spTransport mspTransportInterface;
+-  switch (transportType) {
+-    case I2C:
+-    case UNKNOWN:
+-      mspTransportInterface = std::make_shared<NfccI2cTransport>();
+-      break;
+-    case SPI:
+-      mspTransportInterface = std::make_shared<NfccSpiTransport>();
+-    default:
+-      mspTransportInterface = std::make_shared<NfccI2cTransport>();
+-      break;
+-  }
+-  return mspTransportInterface;
+-}
+diff --git a/halimpl/tml/NfccTransportFactory.h b/halimpl/tml/NfccTransportFactory.h
+deleted file mode 100644
+index 34cec36..0000000
+--- a/halimpl/tml/NfccTransportFactory.h
++++ /dev/null
+@@ -1,67 +0,0 @@
+-/******************************************************************************
+- *
+- *  Copyright 2020-2021 NXP
+- *
+- *  Licensed under the Apache License, Version 2.0 (the "License");
+- *  you may not use this file except in compliance with the License.
+- *  You may obtain a copy of the License at
+- *
+- *  http://www.apache.org/licenses/LICENSE-2.0
+- *
+- *  Unless required by applicable law or agreed to in writing, software
+- *  distributed under the License is distributed on an "AS IS" BASIS,
+- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- *  See the License for the specific language governing permissions and
+- *  limitations under the License.
+- *
+- ******************************************************************************/
+-
+-#pragma once
+-#include <NfccTransport.h>
+-#include <memory>
+-
+-#define transportFactory (NfccTransportFactory::getInstance())
+-typedef std::shared_ptr<NfccTransport> spTransport;
+-enum transportIntf { I2C, SPI, UNKNOWN };
+-
+-extern spTransport gpTransportObj;
+-class NfccTransportFactory {
+-  /*****************************************************************************
+-   **
+-   ** Function         NfccTransportFactory
+-   **
+-   ** Description      Constructor for transportFactory. This will be private to
+-   **                  support singleton
+-   **
+-   ** Parameters       none
+-   **
+-   ** Returns          none
+-   ****************************************************************************/
+-  NfccTransportFactory();
+-
+-public:
+-  /*****************************************************************************
+-   **
+-   ** Function         getInstance
+-   **
+-   ** Description      returns the static instance of TransportFactory
+-   **
+-   ** Parameters       none
+-   **
+-   ** Returns          TransportFactory instance
+-   ****************************************************************************/
+-  static NfccTransportFactory &getInstance();
+-
+-  /*****************************************************************************
+-  **
+-  ** Function         getTransport
+-  **
+-  ** Description      selects and returns transport channel based on the input
+-  **                  parameter
+-  **
+-  ** Parameters       Required transport Type
+-  **
+-  ** Returns          Selected transport channel
+-  ****************************************************************************/
+-  spTransport getTransport(transportIntf transportType);
+-};
+diff --git a/halimpl/tml/transport/NfccI2cTransport.cc b/halimpl/tml/transport/NfccI2cTransport.cc
+deleted file mode 100644
+index cc76f11..0000000
+--- a/halimpl/tml/transport/NfccI2cTransport.cc
++++ /dev/null
+@@ -1,533 +0,0 @@
+-/******************************************************************************
+- *  Copyright 2020-2021 NXP
+- *
+- *  Licensed under the Apache License, Version 2.0 (the "License");
+- *  you may not use this file except in compliance with the License.
+- *  You may obtain a copy of the License at
+- *
+- *  http://www.apache.org/licenses/LICENSE-2.0
+- *
+- *  Unless required by applicable law or agreed to in writing, software
+- *  distributed under the License is distributed on an "AS IS" BASIS,
+- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- *  See the License for the specific language governing permissions and
+- *  limitations under the License.
+- *
+- ******************************************************************************/
+-
+-#include <errno.h>
+-#include <fcntl.h>
+-#include <hardware/nfc.h>
+-#include <stdlib.h>
+-#include <sys/ioctl.h>
+-#include <sys/select.h>
+-#include <termios.h>
+-#include <unistd.h>
+-
+-#include "phNxpNciHal_utils.h"
+-#include <NfccI2cTransport.h>
+-#include <phNfcStatus.h>
+-#include <phNxpLog.h>
+-#include <string.h>
+-
+-#define CRC_LEN 2
+-#define NORMAL_MODE_HEADER_LEN 3
+-#define FW_DNLD_HEADER_LEN 2
+-#define FW_DNLD_LEN_OFFSET 1
+-#define NORMAL_MODE_LEN_OFFSET 2
+-#define FRAGMENTSIZE_MAX PHNFC_I2C_FRAGMENT_SIZE
+-extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
+-extern phTmlNfc_Context_t *gpphTmlNfc_Context;
+-/*******************************************************************************
+-**
+-** Function         Close
+-**
+-** Description      Closes NFCC device
+-**
+-** Parameters       pDevHandle - device handle
+-**
+-** Returns          None
+-**
+-*******************************************************************************/
+-void NfccI2cTransport::Close(void *pDevHandle) {
+-  if (NULL != pDevHandle) {
+-    close((intptr_t)pDevHandle);
+-  }
+-  sem_destroy(&mTxRxSemaphore);
+-  return;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         OpenAndConfigure
+-**
+-** Description      Open and configure NFCC device
+-**
+-** Parameters       pConfig     - hardware information
+-**                  pLinkHandle - device handle
+-**
+-** Returns          NFC status:
+-**                  NFCSTATUS_SUCCESS - open_and_configure operation success
+-**                  NFCSTATUS_INVALID_DEVICE - device open operation failure
+-**
+-*******************************************************************************/
+-NFCSTATUS NfccI2cTransport::OpenAndConfigure(pphTmlNfc_Config_t pConfig,
+-                                             void **pLinkHandle) {
+-  int nHandle;
+-
+-  NXPLOG_TML_D("%s Opening port=%s\n", __func__, pConfig->pDevName);
+-  /* open port */
+-  nHandle = open((const char *)pConfig->pDevName, O_RDWR);
+-  if (nHandle < 0) {
+-    NXPLOG_TML_E("_i2c_open() Failed: retval %x", nHandle);
+-    *pLinkHandle = NULL;
+-    return NFCSTATUS_INVALID_DEVICE;
+-  }
+-
+-  *pLinkHandle = (void *)((intptr_t)nHandle);
+-  if (0 != sem_init(&mTxRxSemaphore, 0, 1)) {
+-    NXPLOG_TML_E("%s Failed: reason sem_init : retval %x", __func__, nHandle);
+-  }
+-  /*Reset PN54X*/
+-  NfccReset((void *)((intptr_t)nHandle), MODE_POWER_OFF);
+-  usleep(10 * 1000);
+-  NfccReset((void *)((intptr_t)nHandle), MODE_POWER_ON);
+-
+-  return NFCSTATUS_SUCCESS;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         Flushdata
+-**
+-** Description      Reads payload of FW rsp from NFCC device into given buffer
+-**
+-** Parameters       pDevHandle - valid device handle
+-**                  pBuffer    - buffer for read data
+-**                  numRead    - number of bytes read by calling function
+-**
+-** Returns          always returns -1
+-**
+-*******************************************************************************/
+-int NfccI2cTransport::Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead) {
+-  int retRead = 0;
+-  uint16_t totalBtyesToRead = pBuffer[FW_DNLD_LEN_OFFSET] + FW_DNLD_HEADER_LEN + CRC_LEN;
+-  /* we shall read totalBtyesToRead-1 as one byte is already read by calling function*/
+-  retRead = read((intptr_t)pDevHandle, pBuffer + numRead, totalBtyesToRead - 1);
+-  if (retRead > 0) {
+-    numRead += retRead;
+-    phNxpNciHal_print_packet("RECV", pBuffer, numRead);
+-  } else if (retRead == 0) {
+-    NXPLOG_TML_E("%s _i2c_read() [pyld] EOF", __func__);
+-  } else {
+-    if (bFwDnldFlag == false) {
+-      NXPLOG_TML_D("%s _i2c_read() [hdr] received", __func__);
+-      phNxpNciHal_print_packet("RECV", pBuffer - numRead, NORMAL_MODE_HEADER_LEN);
+-    }
+-    NXPLOG_TML_E("%s _i2c_read() [pyld] errno : %x", __func__, errno);
+-  }
+-  SemPost();
+-  return -1;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         Read
+-**
+-** Description      Reads requested number of bytes from NFCC device into given
+-**                  buffer
+-**
+-** Parameters       pDevHandle       - valid device handle
+-**                  pBuffer          - buffer for read data
+-**                  nNbBytesToRead   - number of bytes requested to be read
+-**
+-** Returns          numRead   - number of successfully read bytes
+-**                  -1        - read operation failure
+-**
+-*******************************************************************************/
+-int NfccI2cTransport::Read(void *pDevHandle, uint8_t *pBuffer,
+-                           int nNbBytesToRead) {
+-  int ret_Read;
+-  int ret_Select;
+-  int numRead = 0;
+-  struct timeval tv;
+-  fd_set rfds;
+-  uint16_t totalBtyesToRead = 0;
+-
+-  UNUSED(nNbBytesToRead);
+-  if (NULL == pDevHandle) {
+-    return -1;
+-  }
+-
+-  if (bFwDnldFlag == false) {
+-    totalBtyesToRead = NORMAL_MODE_HEADER_LEN;
+-  } else {
+-    totalBtyesToRead = FW_DNLD_HEADER_LEN;
+-  }
+-
+-  /* Read with 2 second timeout, so that the read thread can be aborted
+-     when the NFCC does not respond and we need to switch to FW download
+-     mode. This should be done via a control socket instead. */
+-  FD_ZERO(&rfds);
+-  FD_SET((intptr_t)pDevHandle, &rfds);
+-  tv.tv_sec = 2;
+-  tv.tv_usec = 1;
+-
+-  ret_Select =
+-      select((int)((intptr_t)pDevHandle + (int)1), &rfds, NULL, NULL, &tv);
+-  if (ret_Select < 0) {
+-    NXPLOG_TML_D("%s errno : %x", __func__, errno);
+-    return -1;
+-  } else if (ret_Select == 0) {
+-    NXPLOG_TML_D("%s Timeout", __func__);
+-    return -1;
+-  } else {
+-    ret_Read = read((intptr_t)pDevHandle, pBuffer, totalBtyesToRead - numRead);
+-    if (ret_Read > 0 && !(pBuffer[0] == 0xFF && pBuffer[1] == 0xFF)) {
+-      SemTimedWait();
+-      numRead += ret_Read;
+-    } else if (ret_Read == 0) {
+-      NXPLOG_TML_E("%s [hdr]EOF", __func__);
+-      return -1;
+-    } else {
+-      NXPLOG_TML_E("%s [hdr] errno : %x", __func__, errno);
+-      NXPLOG_TML_E(" %s pBuffer[0] = %x pBuffer[1]= %x", __func__, pBuffer[0],
+-                   pBuffer[1]);
+-      return -1;
+-    }
+-
+-    if (bFwDnldFlag == false) {
+-      totalBtyesToRead = NORMAL_MODE_HEADER_LEN;
+-#if(NXP_EXTNS == TRUE)
+-      if (gpphTmlNfc_Context->tReadInfo.pContext != NULL &&
+-              !memcmp(gpphTmlNfc_Context->tReadInfo.pContext, "MinOpen", 0x07) &&
+-              !pBuffer[0] && pBuffer[1]) {
+-        return Flushdata(pDevHandle, pBuffer, numRead);
+-      }
+-#endif
+-    } else {
+-      totalBtyesToRead = FW_DNLD_HEADER_LEN;
+-    }
+-
+-    if (numRead < totalBtyesToRead) {
+-      ret_Read = read((intptr_t)pDevHandle, (pBuffer + numRead), totalBtyesToRead - numRead);
+-
+-      if (ret_Read != totalBtyesToRead - numRead) {
+-        SemPost();
+-        NXPLOG_TML_E("%s [hdr] errno : %x", __func__, errno);
+-        return -1;
+-      } else {
+-        numRead += ret_Read;
+-      }
+-    }
+-    if (bFwDnldFlag == true) {
+-      totalBtyesToRead = pBuffer[FW_DNLD_LEN_OFFSET] + FW_DNLD_HEADER_LEN + CRC_LEN;
+-    } else {
+-      totalBtyesToRead = pBuffer[NORMAL_MODE_LEN_OFFSET] + NORMAL_MODE_HEADER_LEN;
+-    }
+-    if ((totalBtyesToRead - numRead) != 0) {
+-      ret_Read = read((intptr_t)pDevHandle, (pBuffer + numRead), totalBtyesToRead - numRead);
+-      if (ret_Read > 0) {
+-        numRead += ret_Read;
+-      } else if (ret_Read == 0) {
+-        SemPost();
+-        NXPLOG_TML_E("%s [pyld] EOF", __func__);
+-        return -1;
+-      } else {
+-        if (bFwDnldFlag == false) {
+-          NXPLOG_TML_D("_i2c_read() [hdr] received");
+-          phNxpNciHal_print_packet("RECV", pBuffer, NORMAL_MODE_HEADER_LEN);
+-        }
+-        SemPost();
+-        NXPLOG_TML_E("%s [pyld] errno : %x", __func__, errno);
+-        return -1;
+-      }
+-    } else {
+-      NXPLOG_TML_E("%s _>>>>> Empty packet recieved !!", __func__);
+-    }
+-  }
+-  SemPost();
+-  return numRead;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         Write
+-**
+-** Description      Writes requested number of bytes from given buffer into
+-**                  NFCC device
+-**
+-** Parameters       pDevHandle       - valid device handle
+-**                  pBuffer          - buffer for read data
+-**                  nNbBytesToWrite  - number of bytes requested to be written
+-**
+-** Returns          numWrote   - number of successfully written bytes
+-**                  -1         - write operation failure
+-**
+-*******************************************************************************/
+-int NfccI2cTransport::Write(void *pDevHandle, uint8_t *pBuffer,
+-                            int nNbBytesToWrite) {
+-  int ret;
+-  int numWrote = 0;
+-  int numBytes = nNbBytesToWrite;
+-  if (NULL == pDevHandle) {
+-    return -1;
+-  }
+-  if (fragmentation_enabled == I2C_FRAGMENATATION_DISABLED &&
+-      nNbBytesToWrite > FRAGMENTSIZE_MAX) {
+-    NXPLOG_TML_D(
+-        "%s data larger than maximum I2C  size,enable I2C fragmentation",
+-        __func__);
+-    return -1;
+-  }
+-  while (numWrote < nNbBytesToWrite) {
+-    if (fragmentation_enabled == I2C_FRAGMENTATION_ENABLED &&
+-        nNbBytesToWrite > FRAGMENTSIZE_MAX) {
+-      if (nNbBytesToWrite - numWrote > FRAGMENTSIZE_MAX) {
+-        numBytes = numWrote + FRAGMENTSIZE_MAX;
+-      } else {
+-        numBytes = nNbBytesToWrite;
+-      }
+-    }
+-    SemTimedWait();
+-    ret = write((intptr_t)pDevHandle, pBuffer + numWrote, numBytes - numWrote);
+-    SemPost();
+-    if (ret > 0) {
+-      numWrote += ret;
+-      if (fragmentation_enabled == I2C_FRAGMENTATION_ENABLED &&
+-          numWrote < nNbBytesToWrite) {
+-        usleep(500);
+-      }
+-    } else if (ret == 0) {
+-      NXPLOG_TML_D("%s EOF", __func__);
+-      return -1;
+-    } else {
+-      NXPLOG_TML_D("%s errno : %x", __func__, errno);
+-      if (errno == EINTR || errno == EAGAIN) {
+-        continue;
+-      }
+-      return -1;
+-    }
+-  }
+-
+-  return numWrote;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         Reset
+-**
+-** Description      Reset NFCC device, using VEN pin
+-**
+-** Parameters       pDevHandle     - valid device handle
+-**                  eType          - reset level
+-**
+-** Returns           0   - reset operation success
+-**                  -1   - reset operation failure
+-**
+-*******************************************************************************/
+-int NfccI2cTransport::NfccReset(void *pDevHandle, NfccResetType eType) {
+-  int ret = -1;
+-  NXPLOG_TML_D("%s, VEN eType %ld", __func__, eType);
+-
+-  if (NULL == pDevHandle) {
+-    return -1;
+-  }
+-
+-  ret = ioctl((intptr_t)pDevHandle, NFC_SET_PWR, eType);
+-  if (ret < 0) {
+-    NXPLOG_TML_E("%s :failed errno = 0x%x", __func__, errno);
+-  }
+-  if ((eType != MODE_FW_DWNLD_WITH_VEN && eType != MODE_FW_DWND_HIGH) &&
+-      ret == 0) {
+-    EnableFwDnldMode(false);
+-  }
+-  if ((((eType == MODE_FW_DWNLD_WITH_VEN) || (eType == MODE_FW_DWND_HIGH)) && (ret == 0))) {
+-    EnableFwDnldMode(true);
+-  }
+-
+-  return ret;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         EseReset
+-**
+-** Description      Request NFCC to reset the eSE
+-**
+-** Parameters       pDevHandle     - valid device handle
+-**                  eType          - EseResetType
+-**
+-** Returns           0   - reset operation success
+-**                  else - reset operation failure
+-**
+-*******************************************************************************/
+-int NfccI2cTransport::EseReset(void *pDevHandle, EseResetType eType) {
+-  int ret = -1;
+-  NXPLOG_TML_D("%s, eType %ld", __func__, eType);
+-
+-  if (NULL == pDevHandle) {
+-    return -1;
+-  }
+-  ret = ioctl((intptr_t)pDevHandle, ESE_SET_PWR, eType);
+-  if (ret < 0) {
+-    NXPLOG_TML_E("%s :failed errno = 0x%x", __func__, errno);
+-  }
+-  return ret;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         EseGetPower
+-**
+-** Description      Request NFCC to reset the eSE
+-**
+-** Parameters       pDevHandle     - valid device handle
+-**                  level          - reset level
+-**
+-** Returns           0   - reset operation success
+-**                  else - reset operation failure
+-**
+-*******************************************************************************/
+-int NfccI2cTransport::EseGetPower(void *pDevHandle, long level) {
+-  return ioctl((intptr_t)pDevHandle, ESE_GET_PWR, level);
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         GetPlatform
+-**
+-** Description      Get platform interface type (i2c or i3c) for common mw
+-**
+-** Parameters       pDevHandle     - valid device handle
+-**
+-** Returns           0   - i2c
+-**                   1   - i3c
+-**
+-*******************************************************************************/
+-int NfccI2cTransport::GetPlatform(void *pDevHandle) {
+-  int ret = -1;
+-  NXPLOG_TML_D("%s ", __func__);
+-  if (NULL == pDevHandle) {
+-    return -1;
+-  }
+-  ret = ioctl((intptr_t)pDevHandle, NFC_GET_PLATFORM_TYPE);
+-  NXPLOG_TML_D("%s :platform = %d", __func__, ret);
+-  return ret;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         GetNfcState
+-**
+-** Description      Get NFC state
+-**
+-** Parameters       pDevHandle     - valid device handle
+-** Returns           0   - unknown
+-**                   1   - FW DWL
+-**                   2 	 - NCI
+-**
+-*******************************************************************************/
+-int NfccI2cTransport::GetNfcState(void *pDevHandle) {
+-  int ret = NFC_STATE_UNKNOWN;
+-  NXPLOG_TML_D("%s ", __func__);
+-  if (NULL == pDevHandle) {
+-    return ret;
+-  }
+-  ret = ioctl((intptr_t)pDevHandle, NFC_GET_NFC_STATE);
+-  NXPLOG_TML_D("%s :nfc state = %d", __func__, ret);
+-  return ret;
+-}
+-/*******************************************************************************
+-**
+-** Function         EnableFwDnldMode
+-**
+-** Description      updates the state to Download mode
+-**
+-** Parameters       True/False
+-**
+-** Returns          None
+-*******************************************************************************/
+-void NfccI2cTransport::EnableFwDnldMode(bool mode) { bFwDnldFlag = mode; }
+-
+-/*******************************************************************************
+-**
+-** Function         IsFwDnldModeEnabled
+-**
+-** Description      Returns the current mode
+-**
+-** Parameters       none
+-**
+-** Returns           Current mode download/NCI
+-*******************************************************************************/
+-bool_t NfccI2cTransport::IsFwDnldModeEnabled(void) { return bFwDnldFlag; }
+-
+-/*******************************************************************************
+-**
+-** Function         SemPost
+-**
+-** Description      sem_post 2c_read / write
+-**
+-** Parameters       none
+-**
+-** Returns          none
+-*******************************************************************************/
+-void NfccI2cTransport::SemPost() {
+-  int sem_val = 0;
+-  sem_getvalue(&mTxRxSemaphore, &sem_val);
+-  if (sem_val == 0) {
+-    sem_post(&mTxRxSemaphore);
+-  }
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         SemTimedWait
+-**
+-** Description      Timed sem_wait for avoiding i2c_read & write overlap
+-**
+-** Parameters       none
+-**
+-** Returns          Sem_wait return status
+-*******************************************************************************/
+-int NfccI2cTransport::SemTimedWait() {
+-  NFCSTATUS status = NFCSTATUS_FAILED;
+-  long sem_timedout = 500 * 1000 * 1000;
+-  int s = 0;
+-  struct timespec ts;
+-  clock_gettime(CLOCK_REALTIME, &ts);
+-  ts.tv_sec += 0;
+-  ts.tv_nsec += sem_timedout;
+-  while ((s = sem_timedwait(&mTxRxSemaphore, &ts)) == -1 && errno == EINTR) {
+-    continue; /* Restart if interrupted by handler */
+-  }
+-  if (s != -1) {
+-    status = NFCSTATUS_SUCCESS;
+-  } else if (errno == ETIMEDOUT && s == -1) {
+-    NXPLOG_TML_E("%s :timed out errno = 0x%x", __func__, errno);
+-  }
+-  return status;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         GetIrqState
+-**
+-** Description      Get state of IRQ GPIO
+-**
+-** Parameters       pDevHandle - valid device handle
+-**
+-** Returns          The state of IRQ line i.e. +ve if read is pending else Zer0.
+-**                  In the case of IOCTL error, it returns -ve value.
+-**
+-*******************************************************************************/
+-int NfccI2cTransport::GetIrqState(void *pDevHandle) {
+-  int ret = -1;
+-
+-  NXPLOG_TML_D("%s Enter",__func__);
+-  if (NULL != pDevHandle) {
+-    ret = ioctl((intptr_t)pDevHandle, NFC_GET_IRQ_STATE);
+-  }
+-  NXPLOG_TML_D("%s exit: state = %d", __func__, ret);
+-  return ret;
+-}
+diff --git a/halimpl/tml/transport/NfccI2cTransport.h b/halimpl/tml/transport/NfccI2cTransport.h
+deleted file mode 100644
+index ae684b8..0000000
+--- a/halimpl/tml/transport/NfccI2cTransport.h
++++ /dev/null
+@@ -1,266 +0,0 @@
+-/******************************************************************************
+- *
+- *  Copyright 2020-2021 NXP
+- *
+- *  Licensed under the Apache License, Version 2.0 (the "License");
+- *  you may not use this file except in compliance with the License.
+- *  You may obtain a copy of the License at
+- *
+- *  http://www.apache.org/licenses/LICENSE-2.0
+- *
+- *  Unless required by applicable law or agreed to in writing, software
+- *  distributed under the License is distributed on an "AS IS" BASIS,
+- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- *  See the License for the specific language governing permissions and
+- *  limitations under the License.
+- *
+- ******************************************************************************/
+-
+-#pragma once
+-#include <NfccTransport.h>
+-
+-#define NFC_MAGIC 0xE9
+-/*
+- * NFCC power control via ioctl
+- * NFC_SET_PWR(0): power off
+- * NFC_SET_PWR(1): power on
+- * NFC_SET_PWR(2): reset and power on with firmware download enabled
+- */
+-#define NFC_SET_PWR _IOW(NFC_MAGIC, 0x01, long)
+-/*
+- * 1. SPI Request NFCC to enable ESE power, only in param
+- *   Only for SPI
+- *   level 1 = Enable power
+- *   level 0 = Disable power
+- * 2. NFC Request the eSE cold reset, only with MODE_ESE_COLD_RESET
+- */
+-#define ESE_SET_PWR _IOW(NFC_MAGIC, 0x02, long)
+-
+-/*
+- * SPI or DWP can call this ioctl to get the current
+- * power state of ESE
+- */
+-#define ESE_GET_PWR _IOR(NFC_MAGIC, 0x03, long)
+-
+-/*
+- * get platform interface type(i2c or i3c) for common MW
+- * return 0 - i2c, 1 - i3c
+- */
+-#define NFC_GET_PLATFORM_TYPE _IO(NFC_MAGIC, 0x04)
+-/*
+- * get boot state
+- * return unknown, fw dwl, fw teared, nci
+- */
+-#define NFC_GET_NFC_STATE _IO(NFC_MAGIC, 0x05)
+-
+-/* NFC HAL can call this ioctl to get the current IRQ state */
+-#define NFC_GET_IRQ_STATE _IO(NFC_MAGIC, 0x06)
+-
+-extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
+-
+-class NfccI2cTransport : public NfccTransport {
+- private:
+-  bool_t bFwDnldFlag = false;
+-  sem_t mTxRxSemaphore;
+-  /*****************************************************************************
+-   **
+-   ** Function         SemTimedWait
+-   **
+-   ** Description      Timed sem_wait for avoiding i2c_read & write overlap
+-   **
+-   ** Parameters       none
+-   **
+-   ** Returns          Sem_wait return status
+-   ****************************************************************************/
+-  int SemTimedWait();
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         SemPost
+-   **
+-   ** Description      sem_post 2c_read / write
+-   **
+-   ** Parameters       none
+-   **
+-   ** Returns          none
+-   ****************************************************************************/
+-  void SemPost();
+-
+-  int Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead);
+-
+- public:
+-  /*****************************************************************************
+-  **
+-  ** Function         Close
+-  **
+-  ** Description      Closes NFCC device
+-  **
+-  ** Parameters       pDevHandle - device handle
+-  **
+-  ** Returns          None
+-  **
+-  *****************************************************************************/
+-  void Close(void *pDevHandle);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         OpenAndConfigure
+-   **
+-   ** Description      Open and configure NFCC device
+-   **
+-   ** Parameters       pConfig     - hardware information
+-   **                  pLinkHandle - device handle
+-   **
+-   ** Returns          NFC status:
+-   **                  NFCSTATUS_SUCCESS - open_and_configure operation success
+-   **                  NFCSTATUS_INVALID_DEVICE - device open operation failure
+-   **
+-   ****************************************************************************/
+-  NFCSTATUS OpenAndConfigure(pphTmlNfc_Config_t pConfig, void **pLinkHandle);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         Read
+-   **
+-   ** Description      Reads requested number of bytes from NFCC device into
+-   *given
+-   **                  buffer
+-   **
+-   ** Parameters       pDevHandle       - valid device handle
+-   **                  pBuffer          - buffer for read data
+-   **                  nNbBytesToRead   - number of bytes requested to be read
+-   **
+-   ** Returns          numRead   - number of successfully read bytes
+-   **                  -1        - read operation failure
+-   **
+-   ****************************************************************************/
+-  int Read(void *pDevHandle, uint8_t *pBuffer, int nNbBytesToRead);
+-
+-  /*****************************************************************************
+-  **
+-  ** Function         Write
+-  **
+-  ** Description      Writes requested number of bytes from given buffer into
+-  **                  NFCC device
+-  **
+-  ** Parameters       pDevHandle       - valid device handle
+-  **                  pBuffer          - buffer for read data
+-  **                  nNbBytesToWrite  - number of bytes requested to be written
+-  **
+-  ** Returns          numWrote   - number of successfully written bytes
+-  **                  -1         - write operation failure
+-  **
+-  *****************************************************************************/
+-  int Write(void *pDevHandle, uint8_t *pBuffer, int nNbBytesToWrite);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         Reset
+-   **
+-   ** Description      Reset NFCC device, using VEN pin
+-   **
+-   ** Parameters       pDevHandle     - valid device handle
+-   **                  level          - reset level
+-   **
+-   ** Returns           0   - reset operation success
+-   **                  -1   - reset operation failure
+-   **
+-   ****************************************************************************/
+-  int NfccReset(void *pDevHandle, NfccResetType eType);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         EseReset
+-   **
+-   ** Description      Request NFCC to reset the eSE
+-   **
+-   ** Parameters       pDevHandle     - valid device handle
+-   **                  eType          - EseResetType
+-   **
+-   ** Returns           0   - reset operation success
+-   **                  else - reset operation failure
+-   **
+-   ****************************************************************************/
+-  int EseReset(void *pDevHandle, EseResetType eType);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         EseGetPower
+-   **
+-   ** Description      Request NFCC to reset the eSE
+-   **
+-   ** Parameters       pDevHandle     - valid device handle
+-   **                  level          - reset level
+-   **
+-   ** Returns           0   - reset operation success
+-   **                  else - reset operation failure
+-   **
+-   ****************************************************************************/
+-  int EseGetPower(void *pDevHandle, long level);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         GetPlatform
+-   **
+-   ** Description      Get platform interface type (i2c or i3c) for common mw
+-   **
+-   ** Parameters       pDevHandle     - valid device handle
+-   **
+-   ** Returns           0   - i2c
+-   **                   1   - i3c
+-   **
+-   ****************************************************************************/
+-  int GetPlatform(void *pDevHandle);
+-
+-  /*****************************************************************************
+-  **
+-  ** Function         GetNfcState
+-  **
+-  ** Description      Get Nfc state
+-  **
+-  ** Parameters       pDevHandle     - valid device handle
+-  ** Returns           0   - unknown
+-  **                   1   - FW DWL
+-  **                   2   - NCI
+-  **
+-  *****************************************************************************/
+-  int GetNfcState(void *pDevHandle);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         EnableFwDnldMode
+-   **
+-   ** Description      updates the state to Download mode
+-   **
+-   ** Parameters       True/False
+-   **
+-   ** Returns          None
+-   ****************************************************************************/
+-  void EnableFwDnldMode(bool mode);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         IsFwDnldModeEnabled
+-   **
+-   ** Description      Returns the current mode
+-   **
+-   ** Parameters       none
+-   **
+-   ** Returns           Current mode download/NCI
+-   ****************************************************************************/
+-  bool_t IsFwDnldModeEnabled(void);
+-
+-  /*******************************************************************************
+-   **
+-   ** Function         GetIrqState
+-   **
+-   ** Description      Get state of IRQ GPIO
+-   **
+-   ** Parameters       pDevHandle - valid device handle
+-   **
+-   ** Returns          The state of IRQ line i.e. +ve if read is pending else Zer0.
+-   **                  In the case of IOCTL error, it returns -ve value.
+-   **
+-   *******************************************************************************/
+-  int GetIrqState(void *pDevHandle);
+-};
+diff --git a/halimpl/tml/transport/NfccSpiTransport.cc b/halimpl/tml/transport/NfccSpiTransport.cc
+deleted file mode 100644
+index 82cf97f..0000000
+--- a/halimpl/tml/transport/NfccSpiTransport.cc
++++ /dev/null
+@@ -1,533 +0,0 @@
+-/******************************************************************************
+- *  Copyright 2020-2021 NXP
+- *
+- *  Licensed under the Apache License, Version 2.0 (the "License");
+- *  you may not use this file except in compliance with the License.
+- *  You may obtain a copy of the License at
+- *
+- *  http://www.apache.org/licenses/LICENSE-2.0
+- *
+- *  Unless required by applicable law or agreed to in writing, software
+- *  distributed under the License is distributed on an "AS IS" BASIS,
+- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- *  See the License for the specific language governing permissions and
+- *  limitations under the License.
+- *
+- ******************************************************************************/
+-
+-#include <errno.h>
+-#include <fcntl.h>
+-#include <hardware/nfc.h>
+-#include <stdlib.h>
+-#include <sys/ioctl.h>
+-#include <sys/select.h>
+-#include <termios.h>
+-#include <unistd.h>
+-
+-#include "phNxpNciHal_utils.h"
+-#include <NfccSpiTransport.h>
+-#include <phNfcStatus.h>
+-#include <phNxpLog.h>
+-#include <string.h>
+-
+-#define CRC_LEN 2
+-#define NORMAL_MODE_HEADER_LEN 3
+-#define FW_DNLD_HEADER_LEN 2
+-#define FW_DNLD_LEN_OFFSET 1
+-#define NORMAL_MODE_LEN_OFFSET 2
+-#define FRAGMENTSIZE_MAX PHNFC_I2C_FRAGMENT_SIZE
+-extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
+-extern phTmlNfc_Context_t *gpphTmlNfc_Context;
+-/*******************************************************************************
+-**
+-** Function         Close
+-**
+-** Description      Closes NFCC device
+-**
+-** Parameters       pDevHandle - device handle
+-**
+-** Returns          None
+-**
+-*******************************************************************************/
+-void NfccSpiTransport::Close(void *pDevHandle) {
+-  if (NULL != pDevHandle) {
+-    close((intptr_t)pDevHandle);
+-  }
+-  sem_destroy(&mTxRxSemaphore);
+-  return;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         OpenAndConfigure
+-**
+-** Description      Open and configure NFCC device
+-**
+-** Parameters       pConfig     - hardware information
+-**                  pLinkHandle - device handle
+-**
+-** Returns          NFC status:
+-**                  NFCSTATUS_SUCCESS - open_and_configure operation success
+-**                  NFCSTATUS_INVALID_DEVICE - device open operation failure
+-**
+-*******************************************************************************/
+-NFCSTATUS NfccSpiTransport::OpenAndConfigure(pphTmlNfc_Config_t pConfig,
+-                                             void **pLinkHandle) {
+-  int nHandle;
+-
+-  NXPLOG_TML_D("%s Opening port=%s\n", __func__, pConfig->pDevName);
+-  /* open port */
+-  nHandle = open((const char *)pConfig->pDevName, O_RDWR);
+-  if (nHandle < 0) {
+-    NXPLOG_TML_E("_i2c_open() Failed: retval %x", nHandle);
+-    *pLinkHandle = NULL;
+-    return NFCSTATUS_INVALID_DEVICE;
+-  }
+-
+-  *pLinkHandle = (void *)((intptr_t)nHandle);
+-  if (0 != sem_init(&mTxRxSemaphore, 0, 1)) {
+-    NXPLOG_TML_E("%s Failed: reason sem_init : retval %x", __func__, nHandle);
+-  }
+-  /*Reset PN54X*/
+-  NfccReset((void *)((intptr_t)nHandle), MODE_POWER_OFF);
+-  usleep(10 * 1000);
+-  NfccReset((void *)((intptr_t)nHandle), MODE_POWER_ON);
+-
+-  return NFCSTATUS_SUCCESS;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         Flushdata
+-**
+-** Description      Reads payload of FW rsp from NFCC device into given buffer
+-**
+-** Parameters       pDevHandle - valid device handle
+-**                  pBuffer    - buffer for read data
+-**                  numRead    - number of bytes read by calling function
+-**
+-** Returns          always returns -1
+-**
+-*******************************************************************************/
+-int NfccSpiTransport::Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead) {
+-  int retRead = 0;
+-  uint16_t totalBtyesToRead = pBuffer[FW_DNLD_LEN_OFFSET] + FW_DNLD_HEADER_LEN + CRC_LEN;
+-  /* we shall read totalBtyesToRead-1 as one byte is already read by calling function*/
+-  retRead = read((intptr_t)pDevHandle, pBuffer + numRead, totalBtyesToRead - 1);
+-  if (retRead > 0) {
+-    numRead += retRead;
+-    phNxpNciHal_print_packet("RECV", pBuffer, numRead);
+-  } else if (retRead == 0) {
+-    NXPLOG_TML_E("%s _i2c_read() [pyld] EOF", __func__);
+-  } else {
+-    if (bFwDnldFlag == false) {
+-      NXPLOG_TML_D("%s _i2c_read() [hdr] received", __func__);
+-      phNxpNciHal_print_packet("RECV", pBuffer - numRead, NORMAL_MODE_HEADER_LEN);
+-    }
+-    NXPLOG_TML_E("%s _i2c_read() [pyld] errno : %x", __func__, errno);
+-  }
+-  SemPost();
+-  return -1;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         Read
+-**
+-** Description      Reads requested number of bytes from NFCC device into given
+-**                  buffer
+-**
+-** Parameters       pDevHandle       - valid device handle
+-**                  pBuffer          - buffer for read data
+-**                  nNbBytesToRead   - number of bytes requested to be read
+-**
+-** Returns          numRead   - number of successfully read bytes
+-**                  -1        - read operation failure
+-**
+-*******************************************************************************/
+-int NfccSpiTransport::Read(void *pDevHandle, uint8_t *pBuffer,
+-                           int nNbBytesToRead) {
+-  int ret_Read;
+-  int ret_Select;
+-  int numRead = 0;
+-  struct timeval tv;
+-  fd_set rfds;
+-  uint16_t totalBtyesToRead = 0;
+-
+-  UNUSED(nNbBytesToRead);
+-  if (NULL == pDevHandle) {
+-    return -1;
+-  }
+-
+-  if (bFwDnldFlag == false) {
+-    totalBtyesToRead = NORMAL_MODE_HEADER_LEN;
+-  } else {
+-    totalBtyesToRead = FW_DNLD_HEADER_LEN;
+-  }
+-
+-  /* Read with 2 second timeout, so that the read thread can be aborted
+-     when the NFCC does not respond and we need to switch to FW download
+-     mode. This should be done via a control socket instead. */
+-  FD_ZERO(&rfds);
+-  FD_SET((intptr_t)pDevHandle, &rfds);
+-  tv.tv_sec = 2;
+-  tv.tv_usec = 1;
+-
+-  ret_Select =
+-      select((int)((intptr_t)pDevHandle + (int)1), &rfds, NULL, NULL, &tv);
+-  if (ret_Select < 0) {
+-    NXPLOG_TML_D("%s errno : %x", __func__, errno);
+-    return -1;
+-  } else if (ret_Select == 0) {
+-    NXPLOG_TML_D("%s Timeout", __func__);
+-    return -1;
+-  } else {
+-    ret_Read = read((intptr_t)pDevHandle, pBuffer, totalBtyesToRead - numRead);
+-    if (ret_Read > 0 && !(pBuffer[0] == 0xFF && pBuffer[1] == 0xFF)) {
+-      SemTimedWait();
+-      numRead += ret_Read;
+-    } else if (ret_Read == 0) {
+-      NXPLOG_TML_E("%s [hdr]EOF", __func__);
+-      return -1;
+-    } else {
+-      NXPLOG_TML_E("%s [hdr] errno : %x", __func__, errno);
+-      NXPLOG_TML_E(" %s pBuffer[0] = %x pBuffer[1]= %x", __func__, pBuffer[0],
+-                   pBuffer[1]);
+-      return -1;
+-    }
+-
+-    if (bFwDnldFlag == false) {
+-      totalBtyesToRead = NORMAL_MODE_HEADER_LEN;
+-#if(NXP_EXTNS == TRUE)
+-      if (gpphTmlNfc_Context->tReadInfo.pContext != NULL &&
+-              !memcmp(gpphTmlNfc_Context->tReadInfo.pContext, "MinOpen", 0x07) &&
+-              !pBuffer[0] && pBuffer[1]) {
+-        return Flushdata(pDevHandle, pBuffer, numRead);
+-      }
+-#endif
+-    } else {
+-      totalBtyesToRead = FW_DNLD_HEADER_LEN;
+-    }
+-
+-    if (numRead < totalBtyesToRead) {
+-      ret_Read = read((intptr_t)pDevHandle, (pBuffer + numRead), totalBtyesToRead - numRead);
+-
+-      if (ret_Read != totalBtyesToRead - numRead) {
+-        SemPost();
+-        NXPLOG_TML_E("%s [hdr] errno : %x", __func__, errno);
+-        return -1;
+-      } else {
+-        numRead += ret_Read;
+-      }
+-    }
+-    if (bFwDnldFlag == true) {
+-      totalBtyesToRead = pBuffer[FW_DNLD_LEN_OFFSET] + FW_DNLD_HEADER_LEN + CRC_LEN;
+-    } else {
+-      totalBtyesToRead = pBuffer[NORMAL_MODE_LEN_OFFSET] + NORMAL_MODE_HEADER_LEN;
+-    }
+-    if ((totalBtyesToRead - numRead) != 0) {
+-      ret_Read = read((intptr_t)pDevHandle, (pBuffer + numRead), totalBtyesToRead - numRead);
+-      if (ret_Read > 0) {
+-        numRead += ret_Read;
+-      } else if (ret_Read == 0) {
+-        SemPost();
+-        NXPLOG_TML_E("%s [pyld] EOF", __func__);
+-        return -1;
+-      } else {
+-        if (bFwDnldFlag == false) {
+-          NXPLOG_TML_D("_i2c_read() [hdr] received");
+-          phNxpNciHal_print_packet("RECV", pBuffer, NORMAL_MODE_HEADER_LEN);
+-        }
+-        SemPost();
+-        NXPLOG_TML_E("%s [pyld] errno : %x", __func__, errno);
+-        return -1;
+-      }
+-    } else {
+-      NXPLOG_TML_E("%s _>>>>> Empty packet recieved !!", __func__);
+-    }
+-  }
+-  SemPost();
+-  return numRead;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         Write
+-**
+-** Description      Writes requested number of bytes from given buffer into
+-**                  NFCC device
+-**
+-** Parameters       pDevHandle       - valid device handle
+-**                  pBuffer          - buffer for read data
+-**                  nNbBytesToWrite  - number of bytes requested to be written
+-**
+-** Returns          numWrote   - number of successfully written bytes
+-**                  -1         - write operation failure
+-**
+-*******************************************************************************/
+-int NfccSpiTransport::Write(void *pDevHandle, uint8_t *pBuffer,
+-                            int nNbBytesToWrite) {
+-  int ret;
+-  int numWrote = 0;
+-  int numBytes = nNbBytesToWrite;
+-  if (NULL == pDevHandle) {
+-    return -1;
+-  }
+-  if (fragmentation_enabled == I2C_FRAGMENATATION_DISABLED &&
+-      nNbBytesToWrite > FRAGMENTSIZE_MAX) {
+-    NXPLOG_TML_D(
+-        "%s data larger than maximum I2C  size,enable I2C fragmentation",
+-        __func__);
+-    return -1;
+-  }
+-  while (numWrote < nNbBytesToWrite) {
+-    if (fragmentation_enabled == I2C_FRAGMENTATION_ENABLED &&
+-        nNbBytesToWrite > FRAGMENTSIZE_MAX) {
+-      if (nNbBytesToWrite - numWrote > FRAGMENTSIZE_MAX) {
+-        numBytes = numWrote + FRAGMENTSIZE_MAX;
+-      } else {
+-        numBytes = nNbBytesToWrite;
+-      }
+-    }
+-    SemTimedWait();
+-    ret = write((intptr_t)pDevHandle, pBuffer + numWrote, numBytes - numWrote);
+-    SemPost();
+-    if (ret > 0) {
+-      numWrote += ret;
+-      if (fragmentation_enabled == I2C_FRAGMENTATION_ENABLED &&
+-          numWrote < nNbBytesToWrite) {
+-        usleep(500);
+-      }
+-    } else if (ret == 0) {
+-      NXPLOG_TML_D("%s EOF", __func__);
+-      return -1;
+-    } else {
+-      NXPLOG_TML_D("%s errno : %x", __func__, errno);
+-      if (errno == EINTR || errno == EAGAIN) {
+-        continue;
+-      }
+-      return -1;
+-    }
+-  }
+-
+-  return numWrote;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         NfccReset
+-**
+-** Description      Reset NFCC device, using VEN pin
+-**
+-** Parameters       pDevHandle     - valid device handle
+-**                  eType          - reset level
+-**
+-** Returns           0   - reset operation success
+-**                  -1   - reset operation failure
+-**
+-*******************************************************************************/
+-int NfccSpiTransport::NfccReset(void *pDevHandle, NfccResetType eType) {
+-  int ret = -1;
+-  NXPLOG_TML_D("%s, VEN eType %ld", __func__, eType);
+-
+-  if (NULL == pDevHandle) {
+-    return -1;
+-  }
+-
+-  ret = ioctl((intptr_t)pDevHandle, NFC_SET_PWR, eType);
+-  if (ret < 0) {
+-    NXPLOG_TML_E("%s :failed errno = 0x%x", __func__, errno);
+-  }
+-  if ((eType != MODE_FW_DWNLD_WITH_VEN && eType != MODE_FW_DWND_HIGH) &&
+-      ret == 0) {
+-    EnableFwDnldMode(false);
+-  }
+-  if ((((eType == MODE_FW_DWNLD_WITH_VEN) || (eType == MODE_FW_DWND_HIGH)) && (ret == 0))) {
+-    EnableFwDnldMode(true);
+-  }
+-
+-  return ret;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         EseReset
+-**
+-** Description      Request NFCC to reset the eSE
+-**
+-** Parameters       pDevHandle     - valid device handle
+-**                  eType          - EseResetType
+-**
+-** Returns           0   - reset operation success
+-**                  else - reset operation failure
+-**
+-*******************************************************************************/
+-int NfccSpiTransport::EseReset(void *pDevHandle, EseResetType eType) {
+-  int ret = -1;
+-  NXPLOG_TML_D("%s, eType %ld", __func__, eType);
+-
+-  if (NULL == pDevHandle) {
+-    return -1;
+-  }
+-  ret = ioctl((intptr_t)pDevHandle, ESE_SET_PWR, eType);
+-  if (ret < 0) {
+-    NXPLOG_TML_E("%s :failed errno = 0x%x", __func__, errno);
+-  }
+-  return ret;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         EseGetPower
+-**
+-** Description      Request NFCC to reset the eSE
+-**
+-** Parameters       pDevHandle     - valid device handle
+-**                  level          - reset level
+-**
+-** Returns           0   - reset operation success
+-**                  else - reset operation failure
+-**
+-*******************************************************************************/
+-int NfccSpiTransport::EseGetPower(void *pDevHandle, long level) {
+-  return ioctl((intptr_t)pDevHandle, ESE_GET_PWR, level);
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         GetPlatform
+-**
+-** Description      Get platform interface type (i2c or i3c) for common mw
+-**
+-** Parameters       pDevHandle     - valid device handle
+-**
+-** Returns           0   - i2c
+-**                   1   - i3c
+-**
+-*******************************************************************************/
+-int NfccSpiTransport::GetPlatform(void *pDevHandle) {
+-  int ret = -1;
+-  NXPLOG_TML_D("%s ", __func__);
+-  if (NULL == pDevHandle) {
+-    return -1;
+-  }
+-  ret = ioctl((intptr_t)pDevHandle, NFC_GET_PLATFORM_TYPE);
+-  NXPLOG_TML_D("%s :platform = %d", __func__, ret);
+-  return ret;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         GetNfcState
+-**
+-** Description      Get NFC state
+-**
+-** Parameters       pDevHandle     - valid device handle
+-** Returns           0   - unknown
+-**                   1   - FW DWL
+-**                   2 	 - NCI
+-**
+-*******************************************************************************/
+-int NfccSpiTransport::GetNfcState(void *pDevHandle) {
+-  int ret = NFC_STATE_UNKNOWN;
+-  NXPLOG_TML_D("%s ", __func__);
+-  if (NULL == pDevHandle) {
+-    return ret;
+-  }
+-  ret = ioctl((intptr_t)pDevHandle, NFC_GET_NFC_STATE);
+-  NXPLOG_TML_D("%s :nfc state = %d", __func__, ret);
+-  return ret;
+-}
+-/*******************************************************************************
+-**
+-** Function         EnableFwDnldMode
+-**
+-** Description      updates the state to Download mode
+-**
+-** Parameters       True/False
+-**
+-** Returns          None
+-*******************************************************************************/
+-void NfccSpiTransport::EnableFwDnldMode(bool mode) { bFwDnldFlag = mode; }
+-
+-/*******************************************************************************
+-**
+-** Function         IsFwDnldModeEnabled
+-**
+-** Description      Returns the current mode
+-**
+-** Parameters       none
+-**
+-** Returns           Current mode download/NCI
+-*******************************************************************************/
+-bool_t NfccSpiTransport::IsFwDnldModeEnabled(void) { return bFwDnldFlag; }
+-
+-/*******************************************************************************
+-**
+-** Function         SemPost
+-**
+-** Description      sem_post 2c_read / write
+-**
+-** Parameters       none
+-**
+-** Returns          none
+-*******************************************************************************/
+-void NfccSpiTransport::SemPost() {
+-  int sem_val = 0;
+-  sem_getvalue(&mTxRxSemaphore, &sem_val);
+-  if (sem_val == 0) {
+-    sem_post(&mTxRxSemaphore);
+-  }
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         SemTimedWait
+-**
+-** Description      Timed sem_wait for avoiding i2c_read & write overlap
+-**
+-** Parameters       none
+-**
+-** Returns          Sem_wait return status
+-*******************************************************************************/
+-int NfccSpiTransport::SemTimedWait() {
+-  NFCSTATUS status = NFCSTATUS_FAILED;
+-  long sem_timedout = 500 * 1000 * 1000;
+-  int s = 0;
+-  struct timespec ts;
+-  clock_gettime(CLOCK_REALTIME, &ts);
+-  ts.tv_sec += 0;
+-  ts.tv_nsec += sem_timedout;
+-  while ((s = sem_timedwait(&mTxRxSemaphore, &ts)) == -1 && errno == EINTR) {
+-    continue; /* Restart if interrupted by handler */
+-  }
+-  if (s != -1) {
+-    status = NFCSTATUS_SUCCESS;
+-  } else if (errno == ETIMEDOUT && s == -1) {
+-    NXPLOG_TML_E("%s :timed out errno = 0x%x", __func__, errno);
+-  }
+-  return status;
+-}
+-
+-/*******************************************************************************
+-**
+-** Function         GetIrqState
+-**
+-** Description      Get state of IRQ GPIO
+-**
+-** Parameters       pDevHandle - valid device handle
+-**
+-** Returns          The state of IRQ line i.e. +ve if read is pending else Zer0.
+-**                  In the case of IOCTL error, it returns -ve value.
+-**
+-*******************************************************************************/
+-int NfccSpiTransport::GetIrqState(void *pDevHandle) {
+-  int ret = -1;
+-
+-  NXPLOG_TML_D("%s Enter",__func__);
+-  if (NULL != pDevHandle) {
+-    ret = ioctl((intptr_t)pDevHandle, NFC_GET_IRQ_STATE);
+-  }
+-  NXPLOG_TML_D("%s exit: state = %d", __func__, ret);
+-  return ret;
+-}
+diff --git a/halimpl/tml/transport/NfccSpiTransport.h b/halimpl/tml/transport/NfccSpiTransport.h
+deleted file mode 100644
+index d46ca18..0000000
+--- a/halimpl/tml/transport/NfccSpiTransport.h
++++ /dev/null
+@@ -1,266 +0,0 @@
+-/******************************************************************************
+- *
+- *  Copyright 2020-2021 NXP
+- *
+- *  Licensed under the Apache License, Version 2.0 (the "License");
+- *  you may not use this file except in compliance with the License.
+- *  You may obtain a copy of the License at
+- *
+- *  http://www.apache.org/licenses/LICENSE-2.0
+- *
+- *  Unless required by applicable law or agreed to in writing, software
+- *  distributed under the License is distributed on an "AS IS" BASIS,
+- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- *  See the License for the specific language governing permissions and
+- *  limitations under the License.
+- *
+- ******************************************************************************/
+-
+-#pragma once
+-#include <NfccTransport.h>
+-
+-#define NFC_MAGIC 0xE9
+-/*
+- * NFCC power control via ioctl
+- * NFC_SET_PWR(0): power off
+- * NFC_SET_PWR(1): power on
+- * NFC_SET_PWR(2): reset and power on with firmware download enabled
+- */
+-#define NFC_SET_PWR _IOW(NFC_MAGIC, 0x01, long)
+-/*
+- * 1. SPI Request NFCC to enable ESE power, only in param
+- *   Only for SPI
+- *   level 1 = Enable power
+- *   level 0 = Disable power
+- * 2. NFC Request the eSE cold reset, only with MODE_ESE_COLD_RESET
+- */
+-#define ESE_SET_PWR _IOW(NFC_MAGIC, 0x02, long)
+-
+-/*
+- * SPI or DWP can call this ioctl to get the current
+- * power state of ESE
+- */
+-#define ESE_GET_PWR _IOR(NFC_MAGIC, 0x03, long)
+-
+-/*
+- * get platform interface type(i2c or i3c) for common MW
+- * return 0 - i2c, 1 - i3c
+- */
+-#define NFC_GET_PLATFORM_TYPE _IO(NFC_MAGIC, 0x04)
+-/*
+- * get boot state
+- * return unknown, fw dwl, fw teared, nci
+- */
+-#define NFC_GET_NFC_STATE _IO(NFC_MAGIC, 0x05)
+-
+-/* NFC HAL can call this ioctl to get the current IRQ state */
+-#define NFC_GET_IRQ_STATE _IO(NFC_MAGIC, 0x06)
+-
+-extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
+-
+-class NfccSpiTransport : public NfccTransport {
+- private:
+-  bool_t bFwDnldFlag = false;
+-  sem_t mTxRxSemaphore;
+-  /*****************************************************************************
+-   **
+-   ** Function         SemTimedWait
+-   **
+-   ** Description      Timed sem_wait for avoiding i2c_read & write overlap
+-   **
+-   ** Parameters       none
+-   **
+-   ** Returns          Sem_wait return status
+-   ****************************************************************************/
+-  int SemTimedWait();
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         SemPost
+-   **
+-   ** Description      sem_post 2c_read / write
+-   **
+-   ** Parameters       none
+-   **
+-   ** Returns          none
+-   ****************************************************************************/
+-  void SemPost();
+-
+-  int Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead);
+-
+- public:
+-  /*****************************************************************************
+-  **
+-  ** Function         Close
+-  **
+-  ** Description      Closes NFCC device
+-  **
+-  ** Parameters       pDevHandle - device handle
+-  **
+-  ** Returns          None
+-  **
+-  *****************************************************************************/
+-  void Close(void *pDevHandle);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         OpenAndConfigure
+-   **
+-   ** Description      Open and configure NFCC device
+-   **
+-   ** Parameters       pConfig     - hardware information
+-   **                  pLinkHandle - device handle
+-   **
+-   ** Returns          NFC status:
+-   **                  NFCSTATUS_SUCCESS - open_and_configure operation success
+-   **                  NFCSTATUS_INVALID_DEVICE - device open operation failure
+-   **
+-   ****************************************************************************/
+-  NFCSTATUS OpenAndConfigure(pphTmlNfc_Config_t pConfig, void **pLinkHandle);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         Read
+-   **
+-   ** Description      Reads requested number of bytes from NFCC device into
+-   *given
+-   **                  buffer
+-   **
+-   ** Parameters       pDevHandle       - valid device handle
+-   **                  pBuffer          - buffer for read data
+-   **                  nNbBytesToRead   - number of bytes requested to be read
+-   **
+-   ** Returns          numRead   - number of successfully read bytes
+-   **                  -1        - read operation failure
+-   **
+-   ****************************************************************************/
+-  int Read(void *pDevHandle, uint8_t *pBuffer, int nNbBytesToRead);
+-
+-  /*****************************************************************************
+-  **
+-  ** Function         Write
+-  **
+-  ** Description      Writes requested number of bytes from given buffer into
+-  **                  NFCC device
+-  **
+-  ** Parameters       pDevHandle       - valid device handle
+-  **                  pBuffer          - buffer for read data
+-  **                  nNbBytesToWrite  - number of bytes requested to be written
+-  **
+-  ** Returns          numWrote   - number of successfully written bytes
+-  **                  -1         - write operation failure
+-  **
+-  *****************************************************************************/
+-  int Write(void *pDevHandle, uint8_t *pBuffer, int nNbBytesToWrite);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         NfccReset
+-   **
+-   ** Description      Reset NFCC device, using VEN pin
+-   **
+-   ** Parameters       pDevHandle     - valid device handle
+-   **                  level          - reset level
+-   **
+-   ** Returns           0   - reset operation success
+-   **                  -1   - reset operation failure
+-   **
+-   ****************************************************************************/
+-  int NfccReset(void *pDevHandle, NfccResetType eType);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         EseReset
+-   **
+-   ** Description      Request NFCC to reset the eSE
+-   **
+-   ** Parameters       pDevHandle     - valid device handle
+-   **                  eType          - EseResetType
+-   **
+-   ** Returns           0   - reset operation success
+-   **                  else - reset operation failure
+-   **
+-   ****************************************************************************/
+-  int EseReset(void *pDevHandle, EseResetType eType);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         EseGetPower
+-   **
+-   ** Description      Request NFCC to reset the eSE
+-   **
+-   ** Parameters       pDevHandle     - valid device handle
+-   **                  level          - reset level
+-   **
+-   ** Returns           0   - reset operation success
+-   **                  else - reset operation failure
+-   **
+-   ****************************************************************************/
+-  int EseGetPower(void *pDevHandle, long level);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         GetPlatform
+-   **
+-   ** Description      Get platform interface type (i2c or i3c) for common mw
+-   **
+-   ** Parameters       pDevHandle     - valid device handle
+-   **
+-   ** Returns           0   - i2c
+-   **                   1   - i3c
+-   **
+-   ****************************************************************************/
+-  int GetPlatform(void *pDevHandle);
+-
+-  /*****************************************************************************
+-  **
+-  ** Function         GetNfcState
+-  **
+-  ** Description      Get Nfc state
+-  **
+-  ** Parameters       pDevHandle     - valid device handle
+-  ** Returns           0   - unknown
+-  **                   1   - FW DWL
+-  **                   2   - NCI
+-  **
+-  *****************************************************************************/
+-  int GetNfcState(void *pDevHandle);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         EnableFwDnldMode
+-   **
+-   ** Description      updates the state to Download mode
+-   **
+-   ** Parameters       True/False
+-   **
+-   ** Returns          None
+-   ****************************************************************************/
+-  void EnableFwDnldMode(bool mode);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         IsFwDnldModeEnabled
+-   **
+-   ** Description      Returns the current mode
+-   **
+-   ** Parameters       none
+-   **
+-   ** Returns           Current mode download/NCI
+-   ****************************************************************************/
+-  bool_t IsFwDnldModeEnabled(void);
+-
+-  /*******************************************************************************
+-   **
+-   ** Function         GetIrqState
+-   **
+-   ** Description      Get state of IRQ GPIO
+-   **
+-   ** Parameters       pDevHandle - valid device handle
+-   **
+-   ** Returns          The state of IRQ line i.e. +ve if read is pending else Zer0.
+-   **                  In the case of IOCTL error, it returns -ve value.
+-   **
+-   *******************************************************************************/
+-  int GetIrqState(void *pDevHandle);
+-};
+diff --git a/halimpl/tml/transport/NfccTransport.cc b/halimpl/tml/transport/NfccTransport.cc
+deleted file mode 100644
+index 4380035..0000000
+--- a/halimpl/tml/transport/NfccTransport.cc
++++ /dev/null
+@@ -1,50 +0,0 @@
+-/******************************************************************************
+- *
+- *  Copyright 2020-2021 NXP
+- *
+- *  Licensed under the Apache License, Version 2.0 (the "License");
+- *  you may not use this file except in compliance with the License.
+- *  You may obtain a copy of the License at
+- *
+- *  http://www.apache.org/licenses/LICENSE-2.0
+- *
+- *  Unless required by applicable law or agreed to in writing, software
+- *  distributed under the License is distributed on an "AS IS" BASIS,
+- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- *  See the License for the specific language governing permissions and
+- *  limitations under the License.
+- *
+- ******************************************************************************/
+-
+-#include <NfccTransport.h>
+-
+-int NfccTransport::NfccReset(__attribute__((unused)) void *pDevHandle,
+-                             __attribute__((unused)) NfccResetType eType) {
+-  return NFCSTATUS_SUCCESS;
+-}
+-
+-int NfccTransport::EseReset(__attribute__((unused)) void *pDevHandle,
+-                            __attribute__((unused)) EseResetType eType) {
+-  return NFCSTATUS_SUCCESS;
+-}
+-int NfccTransport::EseGetPower(__attribute__((unused)) void *pDevHandle,
+-                               __attribute__((unused)) long level) {
+-  return NFCSTATUS_SUCCESS;
+-}
+-
+-int NfccTransport::GetPlatform(__attribute__((unused)) void *pDevHandle) {
+-  return 0x00;
+-}
+-
+-int NfccTransport::GetNfcState(__attribute__((unused)) void *pDevHandle) {
+-  return NFC_STATE_UNKNOWN;
+-}
+-
+-void NfccTransport::EnableFwDnldMode(__attribute__((unused)) bool mode) {
+-  return;
+-}
+-int NfccTransport::GetIrqState(__attribute__((unused)) void *pDevHandle) {
+-  return -1;
+-}
+-
+-bool_t NfccTransport::IsFwDnldModeEnabled(void) { return false; }
+diff --git a/halimpl/tml/transport/NfccTransport.h b/halimpl/tml/transport/NfccTransport.h
+deleted file mode 100644
+index 2d2f2d3..0000000
+--- a/halimpl/tml/transport/NfccTransport.h
++++ /dev/null
+@@ -1,246 +0,0 @@
+-/******************************************************************************
+- *
+- *  Copyright 2020-2021 NXP
+- *
+- *  Licensed under the Apache License, Version 2.0 (the "License");
+- *  you may not use this file except in compliance with the License.
+- *  You may obtain a copy of the License at
+- *
+- *  http://www.apache.org/licenses/LICENSE-2.0
+- *
+- *  Unless required by applicable law or agreed to in writing, software
+- *  distributed under the License is distributed on an "AS IS" BASIS,
+- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- *  See the License for the specific language governing permissions and
+- *  limitations under the License.
+- *
+- ******************************************************************************/
+-
+-#pragma once
+-#include <phNfcTypes.h>
+-#include <phTmlNfc.h>
+-
+-enum NfccResetType : long {
+-  MODE_POWER_OFF = 0x00,
+-  MODE_POWER_ON,
+-  MODE_FW_DWNLD_WITH_VEN,
+-  MODE_ISO_RST,
+-  MODE_FW_DWND_HIGH,
+-  MODE_POWER_RESET,
+-  MODE_FW_GPIO_LOW
+-};
+-
+-enum EseResetCallSrc : long {
+-  SRC_SPI = 0x0,
+-  SRC_NFC = 0x10,
+-};
+-
+-enum EseResetType : long {
+-  MODE_ESE_POWER_ON = 0,
+-  MODE_ESE_POWER_OFF,
+-  MODE_ESE_POWER_STATE,
+-  /*Request from eSE HAL/Service*/
+-  MODE_ESE_COLD_RESET,
+-  MODE_ESE_RESET_PROTECTION_ENABLE,
+-  MODE_ESE_RESET_PROTECTION_DISABLE,
+-  /*Request from NFC HAL/Service*/
+-  MODE_ESE_COLD_RESET_NFC = MODE_ESE_COLD_RESET | SRC_NFC,
+-  MODE_ESE_RESET_PROTECTION_ENABLE_NFC =
+-      MODE_ESE_RESET_PROTECTION_ENABLE | SRC_NFC,
+-  MODE_ESE_RESET_PROTECTION_DISABLE_NFC =
+-      MODE_ESE_RESET_PROTECTION_DISABLE | SRC_NFC,
+-};
+-
+-extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
+-
+-class NfccTransport {
+-public:
+-  /*****************************************************************************
+-   **
+-   ** Function         Close
+-   **
+-   ** Description      Closes NFCC device
+-   **
+-   ** Parameters       pDevHandle - device handle
+-   **
+-   ** Returns          None
+-   **
+-   *****************************************************************************/
+-  virtual void Close(void *pDevHandle) = 0;
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         OpenAndConfigure
+-   **
+-   ** Description      Open and configure NFCC device and transport layer
+-   **
+-   ** Parameters       pConfig     - hardware information
+-   **                  pLinkHandle - device handle
+-   **
+-   ** Returns          NFC status:
+-   **                  NFCSTATUS_SUCCESS - open_and_configure operation success
+-   **                  NFCSTATUS_INVALID_DEVICE - device open operation failure
+-   **
+-   ****************************************************************************/
+-  virtual NFCSTATUS OpenAndConfigure(pphTmlNfc_Config_t pConfig,
+-                                     void **pLinkHandle) = 0;
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         Read
+-   **
+-   ** Description      Reads requested number of bytes from NFCC device into
+-   **                 given buffer
+-   **
+-   ** Parameters       pDevHandle       - valid device handle
+-   **                  pBuffer          - buffer for read data
+-   **                  nNbBytesToRead   - number of bytes requested to be read
+-   **
+-   ** Returns          numRead   - number of successfully read bytes
+-   **                  -1        - read operation failure
+-   **
+-   ****************************************************************************/
+-  virtual int Read(void *pDevHandle, uint8_t *pBuffer, int nNbBytesToRead) = 0;
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         Write
+-   **
+-   ** Description      Writes requested number of bytes from given buffer into
+-   **                  NFCC device
+-   **
+-   ** Parameters       pDevHandle       - valid device handle
+-   **                  pBuffer          - buffer for read data
+-   **                  nNbBytesToWrite  - number of bytes requested to be
+-   *written
+-   **
+-   ** Returns          numWrote   - number of successfully written bytes
+-   **                  -1         - write operation failure
+-   **
+-   *****************************************************************************/
+-  virtual int Write(void *pDevHandle, uint8_t *pBuffer,
+-                    int nNbBytesToWrite) = 0;
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         Reset
+-   **
+-   ** Description      Reset NFCC device, using VEN pin
+-   **
+-   ** Parameters       pDevHandle     - valid device handle
+-   **                  eType          - NfccResetType
+-   **
+-   ** Returns           0   - reset operation success
+-   **                  -1   - reset operation failure
+-   **
+-   ****************************************************************************/
+-  virtual int NfccReset(void *pDevHandle, NfccResetType eType);
+-
+-  /*****************************************************************************
+-  **
+-  ** Function         GetNfcState
+-  **
+-  ** Description      Get NFC state
+-  **
+-  ** Parameters       pDevHandle     - valid device handle
+-  ** Returns           0   - unknown
+-  **                   1   - FW DWL
+-  **                   2   - NCI
+-  **
+-  *****************************************************************************/
+-  virtual int GetNfcState(void *pDevHandle);
+-  /*****************************************************************************
+-   **
+-   ** Function         EseReset
+-   **
+-   ** Description      Request NFCC to reset the eSE
+-   **
+-   ** Parameters       pDevHandle     - valid device handle
+-   **                  eType          - EseResetType
+-   **
+-   ** Returns           0   - reset operation success
+-   **                  else - reset operation failure
+-   **
+-   ****************************************************************************/
+-  virtual int EseReset(void *pDevHandle, EseResetType eType);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         EseGetPower
+-   **
+-   ** Description      Request NFCC to reset the eSE
+-   **
+-   ** Parameters       pDevHandle     - valid device handle
+-   **                  level          - reset level
+-   **
+-   ** Returns           0   - reset operation success
+-   **                  else - reset operation failure
+-   **
+-   ****************************************************************************/
+-  virtual int EseGetPower(void *pDevHandle, long level);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         GetPlatform
+-   **
+-   ** Description      Get platform interface type (i2c or i3c) for common mw
+-   **
+-   ** Parameters       pDevHandle     - valid device handle
+-   **
+-   ** Returns           0   - i2c
+-   **                   1   - i3c
+-   **
+-   ****************************************************************************/
+-  virtual int GetPlatform(void *pDevHandle);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         EnableFwDnldMode
+-   **
+-   ** Description      updates the state to Download mode
+-   **
+-   ** Parameters       True/False
+-   **
+-   ** Returns          None
+-   ****************************************************************************/
+-  virtual void EnableFwDnldMode(bool mode);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         IsFwDnldModeEnabled
+-   **
+-   ** Description      Returns the current mode
+-   **
+-   ** Parameters       none
+-   **
+-   ** Returns          Current mode download/NCI
+-   ****************************************************************************/
+-  virtual bool_t IsFwDnldModeEnabled(void);
+-
+-  /*******************************************************************************
+-   **
+-   ** Function         GetIrqState
+-   **
+-   ** Description      Get state of IRQ GPIO
+-   **
+-   ** Parameters       pDevHandle - valid device handle
+-   **
+-   ** Returns          The state of IRQ line i.e. +ve if read is pending else
+-   *Zer0.
+-   **                  In the case of IOCTL error, it returns -ve value.
+-   **
+-   *******************************************************************************/
+-  virtual int GetIrqState(void *pDevHandle);
+-
+-  /*****************************************************************************
+-   **
+-   ** Function         ~NfccTransport
+-   **
+-   ** Description      TransportLayer destructor
+-   **
+-   ** Parameters       none
+-   **
+-   ** Returns          None
+-   ****************************************************************************/
+-  virtual ~NfccTransport(){};
+-};
+-- 
+2.35.1
 
